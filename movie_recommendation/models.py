@@ -1,0 +1,59 @@
+from django.db import models
+from django.contrib.auth.models import AbstractUser
+
+class User(AbstractUser):
+    email = models.EmailField(unique=True)
+
+    ROLE_CHOICES = (
+        ('user', 'User'),
+        ('admin', 'Admin'),
+    )
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username']
+
+class Movie(models.Model):
+    tmdb_id = models.IntegerField(unique=True)
+    title = models.CharField(max_length=255)
+    poster_path = models.CharField(max_length=255, blank=True, null=True)
+    release_date = models.DateField(blank=True, null=True)
+    cached_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.title
+
+class Favorite(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorites')
+    movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'movie')
+
+class Watchlist(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='watchlist')
+    movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'movie')
+
+class Rating(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
+    rating = models.FloatField()
+    rated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'movie')
+
+class SearchHistory(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='searches')
+    query = models.CharField(max_length=255)
+    searched_at = models.DateTimeField(auto_now_add=True)
+
+class RecommendationCache(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    data = models.JSONField()
+    updated_at = models.DateTimeField(auto_now=True)
