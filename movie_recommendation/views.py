@@ -7,7 +7,7 @@ from .serializer import (
     UserSerializer, MovieSerializer, FavoriteSerializer, WatchlistSerializer
     , RatingSerializer, SearchHistorySerializer, RecommendationCacheSerializer
 )
-from .permissions import IsAdminUser, IsUserOrAdmin
+from .permissions import IsAdminUser, IsOwnerOrAdmin
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -22,27 +22,27 @@ class MovieViewSet(viewsets.ModelViewSet):
 class FavoriteViewSet(viewsets.ModelViewSet):
     queryset = Favorite.objects.all()
     serializer_class = FavoriteSerializer
-    permission_classes = [IsUserOrAdmin]
+    permission_classes = [IsOwnerOrAdmin]
 
 class WatchlistViewSet(viewsets.ModelViewSet):
     queryset = Watchlist.objects.all()
     serializer_class = WatchlistSerializer
-    permission_classes = [IsUserOrAdmin]
+    permission_classes = [IsOwnerOrAdmin]
 
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
     serializer_class = RatingSerializer
-    permission_classes = [IsUserOrAdmin]
+    permission_classes = [IsOwnerOrAdmin]
 
 class SearchHistoryViewSet(viewsets.ModelViewSet):
     queryset = SearchHistory.objects.all()
     serializer_class = SearchHistorySerializer
-    permission_classes = [IsUserOrAdmin]
+    permission_classes = [IsOwnerOrAdmin]
 
 class RecommendationCacheViewSet(viewsets.ModelViewSet):
     queryset = RecommendationCache.objects.all()
     serializer_class = RecommendationCacheSerializer
-    permission_classes = [IsUserOrAdmin]
+    permission_classes = [IsOwnerOrAdmin]
 
 class RegisterViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
