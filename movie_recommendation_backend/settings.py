@@ -44,6 +44,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+TMDB_API_KEY = env('TMDB_API_KEY')
 
 # Application definition
 

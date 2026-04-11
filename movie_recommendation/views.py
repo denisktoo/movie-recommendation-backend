@@ -1,11 +1,11 @@
-from requests import Response
-from rest_framework import viewsets, permissions, status
+from rest_framework.response import Response
+from rest_framework import viewsets, permissions, status, generics
 from .models import (
     User, Movie, Favorite, Watchlist, Rating, SearchHistory
     , RecommendationCache
 )
 from .serializer import (
-    UserSerializer, MovieSerializer, FavoriteSerializer, WatchlistSerializer
+    RegisterSerializer, UserSerializer, MovieSerializer, FavoriteSerializer, WatchlistSerializer
     , RatingSerializer, SearchHistorySerializer, RecommendationCacheSerializer
 )
 from .permissions import IsAdminUser, IsOwnerOrAdmin
@@ -47,8 +47,7 @@ class RecommendationCacheViewSet(viewsets.ModelViewSet):
     serializer_class = RecommendationCacheSerializer
     permission_classes = [IsOwnerOrAdmin]
 
-class RegisterViewSet(viewsets.ModelViewSet):
+class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
-    serializer_class = UserSerializer
+    serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
-
