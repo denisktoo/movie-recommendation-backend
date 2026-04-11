@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:15
+    container_name: movie_recommendation_db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - .env
+    
+  web:
+    build: .
+    container_name: movie_recommendation_web
+    command: >
+        sh -c "python manage.py migrate &&
+          python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/movie_recommendation
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    env_file:
+      - .env
+
+volumes:
+  postgres_data:

@@ -1,3 +1,4 @@
+from requests import Response
 from rest_framework import viewsets, permissions, status
 from .models import (
     User, Movie, Favorite, Watchlist, Rating, SearchHistory
@@ -8,16 +9,18 @@ from .serializer import (
     , RatingSerializer, SearchHistorySerializer, RecommendationCacheSerializer
 )
 from .permissions import IsAdminUser, IsOwnerOrAdmin
+from .tmdb import get_trending_movies
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAdminUser]
 
-class MovieViewSet(viewsets.ModelViewSet):
-    queryset = Movie.objects.all()
-    serializer_class = MovieSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+class MovieViewSet(viewsets.ViewSet):
+    
+    def list(self, request, *args, **kwargs):
+        trending_movies = get_trending_movies()
+        return Response(trending_movies, status=status.HTTP_200_OK)
 
 class FavoriteViewSet(viewsets.ModelViewSet):
     queryset = Favorite.objects.all()

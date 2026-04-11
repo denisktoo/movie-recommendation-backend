@@ -27,7 +27,8 @@ DATABASES = {
         "NAME": env('DB_NAME'),
         "USER": env('DB_USER'),
         "PASSWORD": env('DB_PASSWORD'),
-        "HOST": env('DB_HOST'),
+        # "HOST": env('DB_HOST'),
+        "HOST": 'db',
         "PORT": env('DB_PORT'),
     }
 }
@@ -56,11 +57,14 @@ INSTALLED_APPS = [
     'movie_recommendation',
     'rest_framework',
     'drf_yasg',
+    'django_filters',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',

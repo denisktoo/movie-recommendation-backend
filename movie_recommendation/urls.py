@@ -7,10 +7,10 @@ from .views import (
 )
 
 routers = routers.DefaultRouter()
-routers.register(r'users', UserViewSet)
-routers.register(r'movies', MovieViewSet)
-routers.register(r'searches', SearchHistoryViewSet)
-routers.register(r'recommendations', RecommendationCacheViewSet)
+routers.register(r'users', UserViewSet, basename='user')
+routers.register(r'movies', MovieViewSet, basename='movie')
+routers.register(r'searches', SearchHistoryViewSet, basename='searchhistory')
+routers.register(r'recommendations', RecommendationCacheViewSet, basename='recommendationcache')
 routers.register(r'register', RegisterViewSet, basename='register')
 
 user_favorites = NestedDefaultRouter(routers, r'users', lookup='user')
