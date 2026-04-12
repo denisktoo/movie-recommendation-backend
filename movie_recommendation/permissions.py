@@ -28,5 +28,5 @@ class IsOwnerOrAdmin(BasePermission):
     def has_object_permission(self, request, view, obj):        
         return bool(
             request.user and request.user.is_authenticated
-              and (request.user.role == 'admin' or getattr(obj, 'user', None) == request.user)
+              and (request.user.role == 'admin' or obj == request.user)
         )

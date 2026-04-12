@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 
 class User(AbstractUser):
     username = models.CharField(max_length=150, unique=True)
@@ -13,6 +14,14 @@ class User(AbstractUser):
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email']
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            old = User.objects.get(pk=self.pk)
+            if old.role != self.role:
+                if not kwargs.pop('allow_role_change', False):
+                    raise ValidationError("Role cannot be changed directly")
+        super().save(*args, **kwargs)
 
 class Movie(models.Model):
     tmdb_id = models.IntegerField(unique=True)

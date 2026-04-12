@@ -9,6 +9,10 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'email', 'role']
         read_only_fields = ['id', 'role']
+    
+    def update(self, instance, validated_data):
+        validated_data.pop('role', None)  # Block role updates
+        return super().update(instance, validated_data)
 
 class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -18,12 +22,13 @@ class RegisterSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'role']
 
     def create(self, validated_data):
+        validated_data.pop('role', None) # Block role from request
         return User.objects.create_user(**validated_data)
 
 class MovieSerializer(serializers.ModelSerializer):
     class Meta:
         model = Movie
-        fields = ['tmdb_id', 'title', 'poster_path', 'release_date', 'cached_at']
+        fields = ['tmdb_id', 'title', 'poster_path', 'release_date']
 
 class FavoriteSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
