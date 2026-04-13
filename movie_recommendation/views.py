@@ -1,7 +1,7 @@
 from rest_framework.response import Response
-from rest_framework import viewsets, permissions, status, generics
+from rest_framework import viewsets, permissions, mixins, status, generics
 from .models import (
-    User, Movie, Favorite, Watchlist, Rating, SearchHistory
+    User, Favorite, Watchlist, Rating, SearchHistory
     , RecommendationCache
 )
 from .serializer import (
@@ -9,8 +9,14 @@ from .serializer import (
     , RatingSerializer, SearchHistorySerializer, RecommendationCacheSerializer
 )
 from .permissions import IsAdminUser, IsOwnerOrAdmin
-from .tmdb import get_trending_movies
-from django.utils.dateparse import parse_date
+from .tmdb import fetch_and_cache_trending_movies
+from django_filters.rest_framework import DjangoFilterBackend
+from .filter import MovieFilter
+from rest_framework.decorators import action
+from .recommendation_service import (
+    recommend_from_search_history,
+    recommend_from_ratings,
+)
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -32,57 +38,86 @@ class UserViewSet(viewsets.ModelViewSet):
             # Normal users cannot change role
             serializer.save(role=self.get_object().role)
 
-class MovieViewSet(viewsets.ViewSet):
+class MovieViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = MovieSerializer
     permission_classes = [IsAdminUser]
-    
-    def list(self, request, *args, **kwargs):
-        # Fetch from TMDB
-        trending_movies = get_trending_movies()
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = MovieFilter
 
-        # Save / Update DB (CACHE)
-        for movie in trending_movies:
-            Movie.objects.update_or_create(
-                tmdb_id=movie['id'],
-                defaults={
-                    'title': movie.get('title'),
-                    'poster_path': movie.get('poster_path'),
-                    'release_date': parse_date(movie.get('release_date')) if movie.get('release_date') else None
-                }
-            )
-        
-        # Query from DB
-        queryset = Movie.objects.all().order_by('-cached_at')
-
-        # Serialize
-        serializer = MovieSerializer(queryset, many=True)
-
-        # Return clean response
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    def get_queryset(self):
+        return fetch_and_cache_trending_movies()
 
 class FavoriteViewSet(viewsets.ModelViewSet):
-    queryset = Favorite.objects.all()
     serializer_class = FavoriteSerializer
     permission_classes = [IsOwnerOrAdmin]
 
+    def get_queryset(self):
+        return Favorite.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
 class WatchlistViewSet(viewsets.ModelViewSet):
-    queryset = Watchlist.objects.all()
     serializer_class = WatchlistSerializer
     permission_classes = [IsOwnerOrAdmin]
 
+    def get_queryset(self):
+        return Watchlist.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
 class RatingViewSet(viewsets.ModelViewSet):
-    queryset = Rating.objects.all()
     serializer_class = RatingSerializer
     permission_classes = [IsOwnerOrAdmin]
 
-class SearchHistoryViewSet(viewsets.ModelViewSet):
-    queryset = SearchHistory.objects.all()
-    serializer_class = SearchHistorySerializer
-    permission_classes = [IsOwnerOrAdmin]
+    def get_queryset(self):
+        return Rating.objects.filter(user=self.request.user)
 
-class RecommendationCacheViewSet(viewsets.ModelViewSet):
-    queryset = RecommendationCache.objects.all()
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class SearchHistoryViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet
+):
+    serializer_class = SearchHistorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return SearchHistory.objects.filter(user=self.request.user).order_by('-searched_at')
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=['delete'])
+    def clear(self, request):
+        self.get_queryset().delete()
+        return Response({"message": "Search history cleared"}, status=status.HTTP_204_NO_CONTENT)
+
+class RecommendationCacheViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = RecommendationCacheSerializer
-    permission_classes = [IsOwnerOrAdmin]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return RecommendationCache.objects.filter(user=self.request.user)
+
+class RecommendationViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['get'], url_path='from-search-history')
+    def from_search_history(self, request):
+        movies = recommend_from_search_history(request.user, limit=10)
+        serializer = MovieSerializer(movies, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='from-ratings')
+    def from_ratings(self, request):
+        movies = recommend_from_ratings(request.user, limit=10)
+        serializer = MovieSerializer(movies, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()

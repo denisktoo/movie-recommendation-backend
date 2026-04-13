@@ -64,6 +64,16 @@ class SearchHistory(models.Model):
     searched_at = models.DateTimeField(auto_now_add=True)
 
 class RecommendationCache(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    CACHE_TYPE_CHOICES = (
+        ('search_history', 'Search History'),
+        ('ratings', 'Ratings'),
+        ('hybrid', 'Hybrid'),
+    )
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='recommendation_caches')
+    cache_type = models.CharField(max_length=20, choices=CACHE_TYPE_CHOICES)
     data = models.JSONField()
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'cache_type')

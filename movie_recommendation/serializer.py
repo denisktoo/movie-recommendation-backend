@@ -28,7 +28,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 class MovieSerializer(serializers.ModelSerializer):
     class Meta:
         model = Movie
-        fields = ['tmdb_id', 'title', 'poster_path', 'release_date']
+        fields = ['id', 'tmdb_id', 'title', 'poster_path', 'release_date', 'cached_at']
 
 class FavoriteSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -36,7 +36,8 @@ class FavoriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Favorite
-        fields = ['user', 'movie', 'added_at']
+        fields = ['id', 'user', 'movie', 'added_at']
+        read_only_fields = ['id', 'added_at']
 
 class WatchlistSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -44,7 +45,8 @@ class WatchlistSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Watchlist
-        fields = ['user', 'movie', 'added_at']
+        fields = ['id', 'user', 'movie', 'added_at']
+        read_only_fields = ['id', 'added_at']
 
 class RatingSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -52,18 +54,21 @@ class RatingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Rating
-        fields = ['user', 'movie', 'rating', 'rated_at']
+        fields = ['id', 'user', 'movie', 'rating', 'rated_at']
+        read_only_fields = ['id', 'rated_at']
 
 class SearchHistorySerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
 
     class Meta:
         model = SearchHistory
-        fields = ['user', 'query', 'searched_at']
+        fields = ['id', 'user', 'query', 'searched_at']
+        read_only_fields = ['id', 'searched_at']
 
 class RecommendationCacheSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
 
     class Meta:
         model = RecommendationCache
-        fields = ['user', 'data', 'updated_at']
+        fields = ['id', 'user', 'data', 'updated_at']
+        read_only_fields = ['id', 'updated_at']
