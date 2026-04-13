@@ -20,7 +20,7 @@ class User(AbstractUser):
             old = User.objects.get(pk=self.pk)
             if old.role != self.role:
                 if not kwargs.pop('allow_role_change', False):
-                    raise ValidationError("Role cannot be changed directly")
+                    raise ValidationError("You are not allowed to change the account role this way.")
         super().save(*args, **kwargs)
 
 class Movie(models.Model):

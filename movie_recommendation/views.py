@@ -1,3 +1,6 @@
+from django.db import IntegrityError
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework import viewsets, permissions, mixins, status, generics
 from .models import (
@@ -8,7 +11,7 @@ from .serializer import (
     RegisterSerializer, UserSerializer, MovieSerializer, FavoriteSerializer, WatchlistSerializer
     , RatingSerializer, SearchHistorySerializer, RecommendationCacheSerializer
 )
-from .permissions import IsAdminUser, IsOwnerOrAdmin
+from .permissions import IsAdminOrReadOnly, IsAuthenticatedOwnerOrAdmin
 from .tmdb import fetch_and_cache_trending_movies
 from django_filters.rest_framework import DjangoFilterBackend
 from .filter import MovieFilter
@@ -19,63 +22,120 @@ from .recommendation_service import (
 )
 
 class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsOwnerOrAdmin]
+    permission_classes = [IsAuthenticatedOwnerOrAdmin]
 
-    # def perform_update(self, serializer):
-    #     if self.request.user.role != 'admin':
-    #         # Force role to remain unchanged
-    #         serializer.save(role=self.get_object().role)
-    #     else:
-    #         serializer.save()
+    def get_queryset(self):
+        """
+        Admin sees all users.
+        Normal users only see themselves.
+        """
+        if getattr(self.request.user, "role", None) == "admin":
+            return User.objects.all().order_by("id")
+
+        return User.objects.filter(id=self.request.user.id)
 
     def perform_update(self, serializer):
-        if self.request.user.role == 'admin':
-            # Admin can change role
-            serializer.save(allow_role_change=True)
-        else:
-            # Normal users cannot change role
-            serializer.save(role=self.get_object().role)
+        try:
+            if getattr(self.request.user, "role", None) == "admin":
+                # Admin can change role
+                serializer.save(allow_role_change=True)
+            else:
+                # Normal users cannot change role
+                serializer.save(role=self.get_object().role)
+        except DjangoValidationError as exc:
+            raise ValidationError({"detail": str(exc)})
 
 class MovieViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = MovieSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend]
     filterset_class = MovieFilter
 
     def get_queryset(self):
         return fetch_and_cache_trending_movies()
 
-class FavoriteViewSet(viewsets.ModelViewSet):
+class OwnedResourceViewSet(viewsets.ModelViewSet):
+    """
+    Base viewset for resources owned by a user.
+    Child classes must define:
+    - model_class
+    - serializer_class
+    """
+    permission_classes = [IsAuthenticatedOwnerOrAdmin]
+    model_class = None
+
+    def get_queryset(self):
+        """
+        Admin can see all.
+        Normal users only see their own records.
+        """
+        user = self.request.user
+
+        if getattr(user, "role", None) == "admin":
+            return self.model_class.objects.all().order_by("-id")
+
+        return self.model_class.objects.filter(user=user).order_by("-id")
+
+    def perform_create(self, serializer):
+        """
+        Always attach the authenticated user.
+        Prevents a user from creating data under another person's account.
+        """
+        try:
+            serializer.save(user=self.request.user)
+
+        except IntegrityError:
+            raise ValidationError({
+                "detail": "This item already exists in your account."
+            })
+
+        except DjangoValidationError as exc:
+            raise ValidationError({"detail": str(exc)})
+
+class FavoriteViewSet(OwnedResourceViewSet):
     serializer_class = FavoriteSerializer
-    permission_classes = [IsOwnerOrAdmin]
+    model_class = Favorite
 
-    def get_queryset(self):
-        return Favorite.objects.filter(user=self.request.user)
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-class WatchlistViewSet(viewsets.ModelViewSet):
+class WatchlistViewSet(OwnedResourceViewSet):
     serializer_class = WatchlistSerializer
-    permission_classes = [IsOwnerOrAdmin]
+    model_class = Watchlist
 
-    def get_queryset(self):
-        return Watchlist.objects.filter(user=self.request.user)
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-class RatingViewSet(viewsets.ModelViewSet):
+class RatingViewSet(OwnedResourceViewSet):
     serializer_class = RatingSerializer
-    permission_classes = [IsOwnerOrAdmin]
-
-    def get_queryset(self):
-        return Rating.objects.filter(user=self.request.user)
+    model_class = Rating
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        try:
+            rating_value = serializer.validated_data.get("rating")
+
+            if rating_value is not None and not (0 <= rating_value <= 5):
+                raise ValidationError({
+                    "rating": "Please provide a rating between 0 and 5."
+                })
+
+            serializer.save(user=self.request.user)
+
+        except IntegrityError:
+            raise ValidationError({
+                "detail": "You have already rated this movie. Please update your existing rating instead."
+            })
+
+        except DjangoValidationError as exc:
+            raise ValidationError({"detail": str(exc)})
+
+    def perform_update(self, serializer):
+        rating_value = serializer.validated_data.get("rating")
+
+        if rating_value is not None and not (0 <= rating_value <= 5):
+            raise ValidationError({
+                "rating": "Please provide a rating between 0 and 5."
+            })
+
+        serializer.save()
+
 
 class SearchHistoryViewSet(
     mixins.CreateModelMixin,
@@ -87,39 +147,93 @@ class SearchHistoryViewSet(
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return SearchHistory.objects.filter(user=self.request.user).order_by('-searched_at')
-    
+        return SearchHistory.objects.filter(
+            user=self.request.user
+        ).order_by("-searched_at")
+
     def perform_create(self, serializer):
+        query = serializer.validated_data.get("query", "").strip()
+
+        if not query:
+            raise ValidationError({
+                "query": "Please enter a search term."
+            })
+
         serializer.save(user=self.request.user)
 
-    @action(detail=False, methods=['delete'])
+    @action(detail=False, methods=["delete"])
     def clear(self, request):
-        self.get_queryset().delete()
-        return Response({"message": "Search history cleared"}, status=status.HTTP_204_NO_CONTENT)
+        deleted_count, _ = self.get_queryset().delete()
+
+        if deleted_count == 0:
+            return Response(
+                {"detail": "Your search history is already empty."},
+                status=status.HTTP_200_OK
+            )
+
+        return Response(
+            {"detail": "Your search history has been cleared."},
+            status=status.HTTP_200_OK
+        )
+
 
 class RecommendationCacheViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = RecommendationCacheSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return RecommendationCache.objects.filter(user=self.request.user)
+        return RecommendationCache.objects.filter(
+            user=self.request.user
+        ).order_by("-updated_at")
+
 
 class RecommendationViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
-    @action(detail=False, methods=['get'], url_path='from-search-history')
+    @action(detail=False, methods=["get"], url_path="from-search-history")
     def from_search_history(self, request):
         movies = recommend_from_search_history(request.user, limit=10)
         serializer = MovieSerializer(movies, many=True)
+
+        if not movies:
+            return Response(
+                {
+                    "detail": "No recommendations were found from your recent searches yet. Try searching for a few movies or genres first.",
+                    "results": []
+                },
+                status=status.HTTP_200_OK
+            )
+
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=['get'], url_path='from-ratings')
+    @action(detail=False, methods=["get"], url_path="from-ratings")
     def from_ratings(self, request):
         movies = recommend_from_ratings(request.user, limit=10)
         serializer = MovieSerializer(movies, many=True)
+
+        if not movies:
+            return Response(
+                {
+                    "detail": "No recommendations were found from your ratings yet. Rate a few movies first to get personalized suggestions.",
+                    "results": []
+                },
+                status=status.HTTP_200_OK
+            )
+
         return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        return Response(
+            {
+                "detail": "Your account has been created successfully.",
+                "user": response.data
+            },
+            status=status.HTTP_201_CREATED
+        )

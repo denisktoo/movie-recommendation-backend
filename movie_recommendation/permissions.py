@@ -1,32 +1,44 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
-class IsAdminUser(BasePermission):
+class IsAdminOrReadOnly(BasePermission):
     """
-    Allows access only to admin users.
+    Anyone can read.
+    Only admins can create, update, or delete.
     """
+    message = "You can view this, but only an admin can change it."
 
     def has_permission(self, request, view):
-        # Allow safe methods
         if request.method in SAFE_METHODS:
             return True
-        
+
         return bool(
-            request.user and request.user.is_authenticated
-              and request.user.role == 'admin'
+            request.user and request.user.is_authenticated 
+            and getattr(request.user, "role", None) == "admin"
         )
 
-class IsOwnerOrAdmin(BasePermission):
+class IsAuthenticatedOwnerOrAdmin(BasePermission):
     """
-    Allows access to the user themselves or admin users.
+    Only authenticated users can access.
+    Admins can access any object.
+    Owners can access their own object.
     """
+    message = "You do not have permission to access this item."
 
-    def has_permission(self, request, view):       
+    def has_permission(self, request, view):
         return bool(
-            request.user and request.user.is_authenticated
+            request.user and
+            request.user.is_authenticated
         )
 
-    def has_object_permission(self, request, view, obj):        
-        return bool(
-            request.user and request.user.is_authenticated
-              and (request.user.role == 'admin' or obj == request.user)
-        )
+    def has_object_permission(self, request, view, obj):
+        if not (request.user and request.user.is_authenticated):
+            return False
+
+        if getattr(request.user, "role", None) == "admin":
+            return True
+
+        if obj == request.user:
+            return True
+
+        owner = getattr(obj, "user", None)
+        return owner == request.user
