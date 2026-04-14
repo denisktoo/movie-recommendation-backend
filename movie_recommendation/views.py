@@ -1,4 +1,4 @@
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -20,6 +20,7 @@ from .recommendation_service import (
     recommend_from_search_history,
     recommend_from_ratings,
 )
+from .tasks import registration_confirmation_email
 
 class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
@@ -222,18 +223,27 @@ class RecommendationViewSet(viewsets.ViewSet):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
 
+    def perform_create(self, serializer):
+        user = serializer.save()
+        transaction.on_commit(
+            lambda: registration_confirmation_email.delay(user.id)
+        )
+        return user
+
     def create(self, request, *args, **kwargs):
-        response = super().create(request, *args, **kwargs)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = self.perform_create(serializer)
+
         return Response(
             {
                 "detail": "Your account has been created successfully.",
-                "user": response.data
+                "user": RegisterSerializer(user).data
             },
             status=status.HTTP_201_CREATED
         )
