@@ -10,14 +10,15 @@ A RESTful Movie Recommendation API built with **Django REST Framework**, featuri
 * **Search history tracking with clear functionality**
 * **Recommendation caching per user**
 * **Search & filtering with pagination**
+* **Async email notifications with Celery**
 * **Swagger API documentation**
-* **Dockerized setup with Postgres**
+* **Dockerized setup with Postgres and Redis**
 
 ---
 
 ## ⚙️ Setup (local)
 
-You can run the entire stack — including **PostgreSQL** and **Django** — using Docker.
+You can run the entire stack — including **PostgreSQL**, **Redis**, and **Celery** — using Docker.
 
 ### 🐳 Using Docker Compose
 
@@ -31,13 +32,15 @@ This command:
 * Starts containers for:
 
   * PostgreSQL (Database)
+  * Redis (Celery broker & result backend)
   * Django (web app)
+  * Celery worker
 
 Once everything is running:
 
 * Django: `http://localhost:8000`
 * Swagger Docs: `http://localhost:8000/api/docs/`
-* PostgreSQL connects automatically via Docker network alias.
+* PostgreSQL and Redis connect automatically via Docker network aliases.
 
 ### 🚀 Running After the Initial Build
 
@@ -62,6 +65,9 @@ docker compose ps
 # see web logs
 docker compose logs -f web
 
+# see celery logs
+docker compose logs -f celery
+
 # stop services (keep containers)
 docker compose stop
 
@@ -77,7 +83,27 @@ python manage.py migrate
 python manage.py runserver
 ```
 
+### Run Celery Worker (process tasks)
+
+```bash
+celery -A movie_recommendation_backend worker -l info
+```
+
 The API will be available at `http://127.0.0.1:8000/`
+
+---
+
+## 🧰 Redis & Celery Configuration
+
+The project integrates **Celery** and **Redis** through the following configuration:
+
+* **Celery Broker:** Redis (`redis://redis:6379/0`)
+* **Celery Result Backend:** Redis (`redis://redis:6379/0`)
+* **Serialization:** JSON for both tasks and results
+
+This setup ensures async email tasks are queued and processed without blocking API responses.
+
+> **Docker vs local note:** Inside Docker, use `redis://redis:6379/0` (service name). Running Celery locally outside Docker, use `redis://127.0.0.1:6379/0` (host machine). Using the wrong address is the most common reason Celery fails to connect.
 
 ---
 
@@ -124,7 +150,7 @@ Response:
 }
 ```
 
-> Notes: `role` defaults to `user`. It cannot be set at registration — admin role is assigned internally only.
+> Notes: `role` defaults to `user`. It cannot be set at registration — admin role is assigned internally only. A welcome email is sent asynchronously via Celery after the account is created.
 
 ### Login (JWT)
 
@@ -455,20 +481,51 @@ Example paginated response:
 
 ---
 
+## 🔧 Features & Background Tasks
+
+### ✅ Celery (Async Emails)
+
+* Sends a welcome email asynchronously after user registration
+* Uses **Redis** as both the message broker and result backend
+* Email task is triggered via `transaction.on_commit()` — ensures the user is fully committed to the database before the worker attempts to read it
+
+### ✅ Redis
+
+* Serves dual roles:
+
+  * **Celery broker** — receives and queues tasks from Django
+  * **Celery result backend** — stores task execution results
+* Runs in its own Docker container and connects via `redis://redis:6379`
+
+---
+
 ## 🚀 Recommended Workflow
 
 1. Start containers:
 
 ```bash
-docker compose up -d --build
+docker compose up --build -d
 ```
 
-2. Register a user → `POST /api/register/`
+2. Register a user → `POST /api/register/`  *(welcome email sent automatically via Celery)*
 3. Login → `POST /api/token/` → copy your `access` token
 4. Load trending movies → `GET /api/movies/`
 5. Add favorites, rate movies, log searches
 6. Hit recommendation endpoints to get personalized results
 7. Check `GET /api/recommendations/` to see cached recommendation data
+8. 🧪 Check Celery logs for background task execution:
+
+* Stream logs (live)
+
+```bash
+docker compose logs -f celery
+```
+
+* View logs (static)
+
+```bash
+docker compose logs celery
+```
 
 ---
 
@@ -480,11 +537,11 @@ Swagger UI is available at:
 http://127.0.0.1:8000/api/docs/
 ```
 
-ReDoc is available at:
+<!-- ReDoc is available at:
 
 ```
 http://127.0.0.1:8000/api/redoc/
-```
+``` -->
 
 > If Swagger UI looks broken (missing CSS/JS), ensure `drf_yasg` is in `INSTALLED_APPS` and run `python manage.py collectstatic`.
 
@@ -505,6 +562,13 @@ DB_HOST=db
 DB_PORT=5432
 
 TMDB_API_KEY=your_tmdb_api_key
+
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=your_email@gmail.com
+EMAIL_HOST_PASSWORD=your_app_password
+DEFAULT_FROM_EMAIL=your_email@gmail.com
 ```
 
-> `DB_HOST` should be `db` when running with Docker Compose, or `localhost` for local manual setup.
+> `DB_HOST` should be `db` when running with Docker Compose, or `localhost` for local manual setup. Redis broker and backend URLs are set automatically per environment — `redis://redis:6379/0` inside Docker, `redis://127.0.0.1:6379/0` when running locally outside Docker.
