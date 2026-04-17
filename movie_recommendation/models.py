@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 
+
 class User(AbstractUser):
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
@@ -20,8 +21,11 @@ class User(AbstractUser):
             old = User.objects.get(pk=self.pk)
             if old.role != self.role:
                 if not kwargs.pop('allow_role_change', False):
-                    raise ValidationError("You are not allowed to change the account role this way.")
+                    raise ValidationError(
+                        "You are not allowed to change the account role this way."
+                    )
         super().save(*args, **kwargs)
+
 
 class Movie(models.Model):
     tmdb_id = models.IntegerField(unique=True)
@@ -33,6 +37,7 @@ class Movie(models.Model):
     def __str__(self):
         return self.title
 
+
 class Favorite(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorites')
     movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
@@ -41,6 +46,7 @@ class Favorite(models.Model):
     class Meta:
         unique_together = ('user', 'movie')
 
+
 class Watchlist(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='watchlist')
     movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
@@ -48,6 +54,7 @@ class Watchlist(models.Model):
 
     class Meta:
         unique_together = ('user', 'movie')
+
 
 class Rating(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -58,10 +65,12 @@ class Rating(models.Model):
     class Meta:
         unique_together = ('user', 'movie')
 
+
 class SearchHistory(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='searches')
     query = models.CharField(max_length=255)
     searched_at = models.DateTimeField(auto_now_add=True)
+
 
 class RecommendationCache(models.Model):
     CACHE_TYPE_CHOICES = (
@@ -70,7 +79,9 @@ class RecommendationCache(models.Model):
         ('hybrid', 'Hybrid'),
     )
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='recommendation_caches')
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='recommendation_caches'
+    )
     cache_type = models.CharField(max_length=20, choices=CACHE_TYPE_CHOICES)
     data = models.JSONField()
     updated_at = models.DateTimeField(auto_now=True)

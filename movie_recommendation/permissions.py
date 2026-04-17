@@ -1,5 +1,6 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
+
 class IsAdminOrReadOnly(BasePermission):
     """
     Anyone can read.
@@ -12,9 +13,10 @@ class IsAdminOrReadOnly(BasePermission):
             return True
 
         return bool(
-            request.user and request.user.is_authenticated 
+            request.user and request.user.is_authenticated
             and getattr(request.user, "role", None) == "admin"
         )
+
 
 class IsAuthenticatedOwnerOrAdmin(BasePermission):
     """

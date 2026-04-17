@@ -4,12 +4,13 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework import viewsets, permissions, mixins, status, generics
 from .models import (
-    User, Favorite, Watchlist, Rating, SearchHistory
-    , RecommendationCache
+    User, Favorite, Watchlist, Rating, SearchHistory,
+    RecommendationCache
 )
 from .serializer import (
-    RegisterSerializer, UserSerializer, MovieSerializer, FavoriteSerializer, WatchlistSerializer
-    , RatingSerializer, SearchHistorySerializer, RecommendationCacheSerializer
+    RegisterSerializer, UserSerializer, MovieSerializer, FavoriteSerializer,
+    WatchlistSerializer, RatingSerializer, SearchHistorySerializer,
+    RecommendationCacheSerializer
 )
 from .permissions import IsAdminOrReadOnly, IsAuthenticatedOwnerOrAdmin
 from .tmdb import fetch_and_cache_trending_movies
@@ -21,6 +22,7 @@ from .recommendation_service import (
     recommend_from_ratings,
 )
 from .tasks import registration_confirmation_email
+
 
 class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
@@ -47,6 +49,7 @@ class UserViewSet(viewsets.ModelViewSet):
         except DjangoValidationError as exc:
             raise ValidationError({"detail": str(exc)})
 
+
 class MovieViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = MovieSerializer
     permission_classes = [IsAdminOrReadOnly]
@@ -55,6 +58,7 @@ class MovieViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return fetch_and_cache_trending_movies()
+
 
 class OwnedResourceViewSet(viewsets.ModelViewSet):
     """
@@ -94,6 +98,7 @@ class OwnedResourceViewSet(viewsets.ModelViewSet):
         except DjangoValidationError as exc:
             raise ValidationError({"detail": str(exc)})
 
+
 class FavoriteViewSet(OwnedResourceViewSet):
     serializer_class = FavoriteSerializer
     model_class = Favorite
@@ -121,7 +126,10 @@ class RatingViewSet(OwnedResourceViewSet):
 
         except IntegrityError:
             raise ValidationError({
-                "detail": "You have already rated this movie. Please update your existing rating instead."
+                "detail": (
+                    "You have already rated this movie."
+                    "Please update your existing rating instead."
+                )
             })
 
         except DjangoValidationError as exc:
@@ -199,7 +207,10 @@ class RecommendationViewSet(viewsets.ViewSet):
         if not movies:
             return Response(
                 {
-                    "detail": "No recommendations were found from your recent searches yet. Try searching for a few movies or genres first.",
+                    "detail": (
+                        "No recommendations were found from your recent searches yet."
+                        "Try searching for a few movies or genres first."
+                    ),
                     "results": []
                 },
                 status=status.HTTP_200_OK
@@ -215,13 +226,17 @@ class RecommendationViewSet(viewsets.ViewSet):
         if not movies:
             return Response(
                 {
-                    "detail": "No recommendations were found from your ratings yet. Rate a few movies first to get personalized suggestions.",
+                    "detail": (
+                        "No recommendations were found from your ratings yet. Rate a"
+                        "few movies first to get personalized suggestions."
+                    ),
                     "results": []
                 },
                 status=status.HTTP_200_OK
             )
 
         return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
