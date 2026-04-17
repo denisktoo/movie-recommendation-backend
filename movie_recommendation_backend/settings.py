@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 import environ
 from datetime import timedelta
@@ -31,6 +32,15 @@ DATABASES = {
         "PORT": env('DB_PORT', default='5432'),
     }
 }
+
+# Override DB for Jenkins tests
+if os.environ.get('USE_SQLITE_FOR_TESTS'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'test_db.sqlite3',
+        }
+    }
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/

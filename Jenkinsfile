@@ -10,6 +10,15 @@ pipeline {
         VENV_DIR = "env"
         IMAGE_NAME = "kiprotich507/movie-recommendation-backend"
         IMAGE_TAG = "latest"
+
+        USE_SQLITE_FOR_TESTS = 'true'
+        SECRET_KEY           = credentials('django-secret-key')
+        TMDB_API_KEY         = credentials('tmdb-api-key')
+        EMAIL_HOST_PASSWORD  = credentials('email-host-password')
+        EMAIL_HOST           = 'smtp.gmail.com'
+        EMAIL_PORT           = '587'
+        EMAIL_HOST_USER      = 'kiprotichdenis95@gmail.com'
+        DEFAULT_FROM_EMAIL   = 'kiprotichdenis95@gmail.com'
     }
 
     stages {
