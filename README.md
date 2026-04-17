@@ -13,6 +13,7 @@ A RESTful Movie Recommendation API built with **Django REST Framework**, featuri
 * **Async email notifications with Celery**
 * **Swagger API documentation**
 * **Dockerized setup with Postgres and Redis**
+* **CI/CD with GitHub Actions and Jenkins**
 
 ---
 
@@ -537,12 +538,6 @@ Swagger UI is available at:
 http://127.0.0.1:8000/api/docs/
 ```
 
-<!-- ReDoc is available at:
-
-```
-http://127.0.0.1:8000/api/redoc/
-``` -->
-
 > If Swagger UI looks broken (missing CSS/JS), ensure `drf_yasg` is in `INSTALLED_APPS` and run `python manage.py collectstatic`.
 
 ---
@@ -569,6 +564,177 @@ EMAIL_USE_TLS=True
 EMAIL_HOST_USER=your_email@gmail.com
 EMAIL_HOST_PASSWORD=your_app_password
 DEFAULT_FROM_EMAIL=your_email@gmail.com
+
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/0
 ```
 
 > `DB_HOST` should be `db` when running with Docker Compose, or `localhost` for local manual setup. Redis broker and backend URLs are set automatically per environment — `redis://redis:6379/0` inside Docker, `redis://127.0.0.1:6379/0` when running locally outside Docker.
+
+---
+
+## ⚙️ CI/CD & Deployment
+
+This project uses **GitHub Actions** for CI/CD and **Jenkins** (via Docker) for local pipeline automation.
+
+* `.github/workflows/ci.yml` runs tests and linting on every push and pull request.
+* `.github/workflows/dep.yml` builds and pushes the Docker image to Docker Hub on every push to `main`.
+* `Jenkinsfile` defines a full pipeline: checkout → setup → test → Docker build → Docker push.
+* `jenkins/Dockerfile` extends the official Jenkins LTS image with Docker pre-installed, so pipelines can build images without installing it on every run.
+
+**Local Development:** uses **Docker Compose** for the full app stack, with Jenkins added as a service.
+**CI (GitHub Actions):** spins up PostgreSQL and Redis as service containers and runs Django tests in a clean environment.
+**CD (GitHub Actions):** builds and tags the Docker image with both `latest` and the short Git commit SHA, then pushes to Docker Hub.
+**Jenkins:** mirrors the CD workflow locally, adding pytest with JUnit report generation for dashboard-level test visibility.
+
+**Secrets**: `DOCKERHUB_USERNAME` and `DOCKERHUB_PASSWORD` are stored in GitHub Secrets for the CD workflow. `DJANGO_SECRET_KEY`, `TMDB_API_KEY`, and `EMAIL_HOST_PASSWORD` are also stored as GitHub Secrets and injected into the CI environment at runtime — never hardcoded.
+
+---
+
+## 🧪 GitHub Actions Workflows
+
+### CI — `.github/workflows/ci.yml`
+
+Triggered on every push and pull request to `main`. Runs against a live PostgreSQL service container on `127.0.0.1:5432`.
+
+What it does:
+* Installs system dependencies (`gcc`, `libpq-dev`)
+* Installs Python dependencies from `requirements.txt`
+* Runs `python manage.py migrate`
+* Runs `flake8 .` — fails the build on any lint error
+* Runs `coverage run manage.py test` and generates `coverage.xml`
+* Uploads `coverage.xml` as a build artifact
+
+> Linting respects `.flake8` config at the project root — migrations and virtual environments are excluded automatically.
+
+### CD — `.github/workflows/dep.yml`
+
+Triggered on every push to `main`. Builds and pushes the Docker image to Docker Hub.
+
+What it does:
+* Logs into Docker Hub using `DOCKERHUB_USERNAME` and `DOCKERHUB_PASSWORD` secrets
+* Builds the image and tags it with both `latest` and the short Git commit SHA
+* Pushes both tags to Docker Hub: `kiprotich507/movie-recommendation-backend`
+
+---
+
+## 🏗️ Jenkins Pipeline
+
+Jenkins runs as a service inside Docker Compose alongside the app stack. The `Jenkinsfile` at the project root defines the full pipeline.
+
+### Running Jenkins
+
+Jenkins starts automatically with the rest of the stack:
+
+```bash
+docker compose up -d --build
+```
+
+Access the Jenkins dashboard at:
+
+```
+http://localhost:8080
+```
+
+Get the initial admin password:
+
+```bash
+docker compose exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+```
+
+### Required Jenkins Plugins
+
+Install these from **Manage Jenkins → Plugins**:
+
+* Git
+* Pipeline
+* JUnit
+* Credentials Binding
+* Workspace Cleanup
+* Docker Pipeline
+
+### Required Jenkins Credentials
+
+Add these from **Manage Jenkins → Credentials → Global**:
+
+| Credential ID | Kind | Used for |
+| --- | --- | --- |
+| `github-credentials` | Username with password | Git checkout |
+| `docker-credentials` | Username with password | Docker Hub push |
+
+> For GitHub, use a **Personal Access Token** instead of a password. For Docker Hub, use an **access token** from your Docker Hub security settings.
+
+### Creating the Pipeline Job
+
+1. Go to **Dashboard → New Item**
+2. Enter name: `movie-recommendation-backend`
+3. Select **Pipeline** → click **OK**
+4. Under **Pipeline**, set:
+   * Definition: `Pipeline script from SCM`
+   * SCM: `Git`
+   * Repository URL: `https://github.com/denisktoo/movie-recommendation-backend.git`
+   * Credentials: `github-credentials`
+   * Branch Specifier: `*/main`
+   * Script Path: `Jenkinsfile`
+5. Click **Save**, then click **Build Now** to trigger manually
+
+### Pipeline Stages
+
+```
+Checkout → Setup Python Environment → Run Tests → Get Git Commit Hash → Build Docker Image → Push Docker Image
+```
+
+* **Checkout** — pulls repo from GitHub using `github-credentials`
+* **Setup Python Environment** — installs `gcc`, `libpq-dev`, `docker.io`, and all Python dependencies inside a `python:3.12` Docker agent
+* **Run Tests** — runs `pytest --junitxml=report.xml`; JUnit report is published to the Jenkins dashboard
+* **Get Git Commit Hash** — tags the image with the short commit SHA for traceability
+* **Build Docker Image** — builds and tags as both `latest` and `<commit-hash>`
+* **Push Docker Image** — logs into Docker Hub and pushes both tags using `docker-credentials`
+
+---
+
+## 🔍 Code Quality
+
+Flake8 is configured via `.flake8` at the project root:
+
+```ini
+[flake8]
+max-line-length = 88
+exclude =
+    .git,
+    __pycache__,
+    env,
+    venv,
+    .venv,
+    .pytest_cache,
+    migrations
+```
+
+This ensures migrations are not linted, virtual environments are excluded, and the line length limit is consistent with Black's default of 88 characters.
+
+Run locally:
+
+```bash
+flake8 .
+```
+
+---
+
+## 🐳 Docker Hub
+
+The production-ready Docker image is available at:
+
+```
+kiprotich507/movie-recommendation-backend
+```
+
+Tags pushed on every successful CD run:
+
+* `latest` — always points to the most recent build from `main`
+* `<commit-sha>` — short Git commit hash for version traceability (e.g. `a1b2c3`)
+
+Pull the image:
+
+```bash
+docker pull kiprotich507/movie-recommendation-backend:latest
+```
