@@ -30,7 +30,7 @@ pipeline {
                     python3 -m venv $VENV_DIR
                     . $VENV_DIR/bin/activate
                     pip3 install --upgrade pip
-                    pip3 install -r requirements.txt
+                    pip3 install --default-timeout=100 --no-cache-dir -r requirements.txt
                     pip3 install pytest
                 '''
             }
