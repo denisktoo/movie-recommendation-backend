@@ -38,7 +38,11 @@ pipeline {
 
         stage('Run Tests') {
             steps {
-                sh '. $VENV_DIR/bin/activate && pytest --junitxml=report.xml'
+                sh '''
+                    . $VENV_DIR/bin/activate
+                    pip3 install pytest-django
+                    pytest --junitxml=report.xml
+                '''
             }
             post {
                 always {
