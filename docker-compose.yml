@@ -17,25 +17,25 @@ services:
       - postgres_data:/var/lib/postgresql/data
     env_file:
       - .env
-    
+
   web:
     build: .
     container_name: movie_recommendation_web
     command: >
-        sh -c "python manage.py migrate &&
-          python manage.py runserver 0.0.0.0:8000"
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
     volumes:
       - .:/movie_recommendation
     ports:
       - "8000:8000"
     depends_on:
       db:
-          condition: service_healthy
+        condition: service_healthy
       redis:
-          condition: service_started
+        condition: service_started
     env_file:
       - .env
-  
+
   redis:
     image: redis:latest
     container_name: movie_recommendation_redis
@@ -56,5 +56,20 @@ services:
     env_file:
       - .env
 
+  jenkins:
+    build:
+      context: ./jenkins
+    container_name: movie_recommendation_jenkins
+    user: root
+    ports:
+      - "8081:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  jenkins_home:
