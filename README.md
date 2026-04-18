@@ -581,13 +581,14 @@ This project uses **GitHub Actions** for CI/CD and **Jenkins** (via Docker) for 
 * `.github/workflows/dep.yml` builds and pushes the Docker image to Docker Hub on every push to `main`.
 * `Jenkinsfile` defines a full pipeline: checkout → setup → test → Docker build → Docker push.
 * `jenkins/Dockerfile` extends the official Jenkins LTS image with Docker pre-installed, so pipelines can build images without installing it on every run.
+* `pytest.ini` configures pytest discovery so Jenkins can locate Django tests correctly.
 
 **Local Development:** uses **Docker Compose** for the full app stack, with Jenkins added as a service.
 **CI (GitHub Actions):** spins up PostgreSQL and Redis as service containers and runs Django tests in a clean environment.
 **CD (GitHub Actions):** builds and tags the Docker image with both `latest` and the short Git commit SHA, then pushes to Docker Hub.
-**Jenkins:** mirrors the CD workflow locally, adding pytest with JUnit report generation for dashboard-level test visibility.
+**Jenkins:** runs tests using `pytest` with JUnit XML report generation for dashboard-level test visibility. Uses SQLite in place of PostgreSQL during tests so no database sidecar is required inside the pipeline container.
 
-**Secrets**: `DOCKERHUB_USERNAME` and `DOCKERHUB_PASSWORD` are stored in GitHub Secrets for the CD workflow. `DJANGO_SECRET_KEY`, `TMDB_API_KEY`, and `EMAIL_HOST_PASSWORD` are also stored as GitHub Secrets and injected into the CI environment at runtime — never hardcoded.
+**Secrets**: `DOCKERHUB_USERNAME` and `DOCKERHUB_PASSWORD` are stored in GitHub Secrets for the CD workflow. `DJANGO_SECRET_KEY`, `TMDB_API_KEY`, and `EMAIL_HOST_PASSWORD` are stored as GitHub Secrets for CI and as **Secret text** credentials in Jenkins — never hardcoded in either pipeline file.
 
 ---
 
@@ -661,8 +662,11 @@ Add these from **Manage Jenkins → Credentials → Global**:
 | --- | --- | --- |
 | `github-credentials` | Username with password | Git checkout |
 | `docker-credentials` | Username with password | Docker Hub push |
+| `django-secret-key` | Secret text | Django `SECRET_KEY` |
+| `tmdb-api-key` | Secret text | TMDB API key |
+| `email-host-password` | Secret text | Gmail app password |
 
-> For GitHub, use a **Personal Access Token** instead of a password. For Docker Hub, use an **access token** from your Docker Hub security settings.
+> For GitHub, use a **Personal Access Token** instead of a password. For Docker Hub, use an **access token** from your Docker Hub security settings. The three `Secret text` credentials store only the raw value — no username field. Storing them as `Username with password` causes Jenkins to split them into `_USR`/`_PSW` variables and raises an insecure interpolation warning.
 
 ### Creating the Pipeline Job
 
@@ -685,11 +689,43 @@ Checkout → Setup Python Environment → Run Tests → Get Git Commit Hash → 
 ```
 
 * **Checkout** — pulls repo from GitHub using `github-credentials`
-* **Setup Python Environment** — installs `gcc`, `libpq-dev`, `docker.io`, and all Python dependencies inside a `python:3.12` Docker agent
-* **Run Tests** — runs `pytest --junitxml=report.xml`; JUnit report is published to the Jenkins dashboard
-* **Get Git Commit Hash** — tags the image with the short commit SHA for traceability
+* **Setup Python Environment** — installs `gcc`, `libpq-dev`, `docker.io`, and all Python dependencies inside a `python:3.12` Docker agent; also installs `pytest-django` for Django-aware test discovery
+* **Run Tests** — runs `pytest --junitxml=report.xml` using the SQLite override so no Postgres sidecar is needed; JUnit report is published to the Jenkins dashboard
+* **Get Git Commit Hash** — assigns the short commit SHA directly to `IMAGE_TAG` for version traceability
 * **Build Docker Image** — builds and tags as both `latest` and `<commit-hash>`
-* **Push Docker Image** — logs into Docker Hub and pushes both tags using `docker-credentials`
+* **Push Docker Image** — logs into Docker Hub using single-quoted shell strings throughout to avoid Groovy string interpolation of credentials; pushes both tags using `docker-credentials`
+
+> **Note on secure interpolation:** All `sh` blocks in the Jenkinsfile use single-quoted strings (`'''...'''`) so Groovy never interpolates sensitive variables. Shell environment variables are resolved by the shell instead, which is the Jenkins-recommended pattern.
+
+### pytest Configuration
+
+`pytest.ini` at the project root tells pytest where to find the Django settings module and which files to treat as test files:
+
+```ini
+[pytest]
+DJANGO_SETTINGS_MODULE = movie_recommendation_backend.settings
+python_files = tests.py test_*.py *_tests.py
+```
+
+Without this file, pytest cannot discover Django tests because it does not know the settings module and does not match the `tests.py` naming convention by default. `pytest-django` must also be installed — it is listed in `requirements.txt`.
+
+### SQLite Override for Jenkins Tests
+
+The Jenkins pipeline runs tests inside a `python:3.12` Docker agent with no Postgres available. To avoid needing a database sidecar, `settings.py` overrides the database to SQLite when the `USE_SQLITE_FOR_TESTS` environment variable is set:
+
+```python
+import os
+
+if os.environ.get('USE_SQLITE_FOR_TESTS'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'test_db.sqlite3',
+        }
+    }
+```
+
+The Jenkinsfile sets `USE_SQLITE_FOR_TESTS = 'true'` in its environment block. This means `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_HOST` are not required during Jenkins test runs. GitHub Actions CI still uses a real PostgreSQL service container and is unaffected by this override.
 
 ---
 
@@ -717,6 +753,17 @@ Run locally:
 ```bash
 flake8 .
 ```
+
+### ✅ Dockerfile ENV Format
+
+The app `Dockerfile` uses the current `KEY=value` format for `ENV` instructions:
+
+```dockerfile
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+```
+
+The legacy `ENV key value` (space-separated) format is deprecated and raises a `LegacyKeyValueFormat` warning in Docker build output. Using `=` is the correct format per current Docker best practice.
 
 ---
 
