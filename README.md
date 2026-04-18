@@ -685,17 +685,16 @@ Add these from **Manage Jenkins → Credentials → Global**:
 ### Pipeline Stages
 
 ```
-Checkout → Setup Python Environment → Run Tests → Get Git Commit Hash → Build Docker Image → Push Docker Image
+Checkout → Setup Python Environment → Run Tests → Build Docker Image → Push Docker Image
 ```
 
 * **Checkout** — pulls repo from GitHub using `github-credentials`
 * **Setup Python Environment** — installs `gcc`, `libpq-dev`, `docker.io`, and all Python dependencies inside a `python:3.12` Docker agent; also installs `pytest-django` for Django-aware test discovery
 * **Run Tests** — runs `pytest --junitxml=report.xml` using the SQLite override so no Postgres sidecar is needed; JUnit report is published to the Jenkins dashboard
-* **Get Git Commit Hash** — assigns the short commit SHA directly to `IMAGE_TAG` for version traceability
-* **Build Docker Image** — builds and tags as both `latest` and `<commit-hash>`
-* **Push Docker Image** — logs into Docker Hub using single-quoted shell strings throughout to avoid Groovy string interpolation of credentials; pushes both tags using `docker-credentials`
+* **Build Docker Image** — resolves the Git commit SHA directly in the shell (`IMAGE_TAG=$(git rev-parse --short HEAD)`), then builds and tags as both `latest` and `<commit-hash>`
+* **Push Docker Image** — resolves the commit SHA in the shell again and pushes both tags to Docker Hub using `docker-credentials`
 
-> **Note on secure interpolation:** All `sh` blocks in the Jenkinsfile use single-quoted strings (`'''...'''`) so Groovy never interpolates sensitive variables. Shell environment variables are resolved by the shell instead, which is the Jenkins-recommended pattern.
+> **Note on secure interpolation:** All `sh` blocks in the Jenkinsfile use single-quoted strings (`'''...'''`) so Groovy never interpolates sensitive variables. Shell environment variables are resolved by the shell instead, which is the Jenkins-recommended pattern. The commit hash is also resolved in the shell for the same reason — passing it through Groovy's `env` caused it to always remain `latest` regardless of the actual hash.
 
 ### pytest Configuration
 
@@ -711,7 +710,24 @@ Without this file, pytest cannot discover Django tests because it does not know 
 
 ### SQLite Override for Jenkins Tests
 
-The Jenkins pipeline runs tests inside a `python:3.12` Docker agent with no Postgres available. To avoid needing a database sidecar, `settings.py` overrides the database to SQLite when the `USE_SQLITE_FOR_TESTS` environment variable is set:
+The Jenkins pipeline runs tests inside a `python:3.12` Docker agent with no Postgres available. To avoid needing a database sidecar, `settings.py` is configured in two parts.
+
+First, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` are given empty string defaults so `settings.py` loads without crashing when those variables are absent:
+
+```python
+DATABASES = {
+    'default': {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": env('DB_NAME', default=''),
+        "USER": env('DB_USER', default=''),
+        "PASSWORD": env('DB_PASSWORD', default=''),
+        "HOST": env('DB_HOST', default='db'),
+        "PORT": env('DB_PORT', default='5432'),
+    }
+}
+```
+
+Then, after the Postgres block, the database is overridden to SQLite when `USE_SQLITE_FOR_TESTS` is set:
 
 ```python
 import os
@@ -724,6 +740,8 @@ if os.environ.get('USE_SQLITE_FOR_TESTS'):
         }
     }
 ```
+
+Without the `default=''` values, `settings.py` would crash on the Postgres block before ever reaching the SQLite override, since `django-environ` raises an error for missing required variables.
 
 The Jenkinsfile sets `USE_SQLITE_FOR_TESTS = 'true'` in its environment block. This means `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_HOST` are not required during Jenkins test runs. GitHub Actions CI still uses a real PostgreSQL service container and is unaffected by this override.
 
