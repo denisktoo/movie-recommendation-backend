@@ -64,8 +64,7 @@ pipeline {
             steps {
                 script {
                     sh 'git config --global --add safe.directory "$WORKSPACE"'
-                    def COMMIT_HASH = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                    env.IMAGE_TAG = COMMIT_HASH
+                    env.IMAGE_TAG = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
                     echo "Docker image tag will be: ${env.IMAGE_TAG}"
                 }
             }
