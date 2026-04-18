@@ -63,36 +63,34 @@ pipeline {
         stage('Get Git Commit Hash') {
             steps {
                 script {
-                    sh "git config --global --add safe.directory '${env.WORKSPACE}'"
+                    sh 'git config --global --add safe.directory "$WORKSPACE"'
                     COMMIT_HASH = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                    env.IMAGE_TAG = "${COMMIT_HASH}"
-                    echo "Docker image tag will be: ${IMAGE_TAG}"
+                    env.IMAGE_TAG = COMMIT_HASH
+                    echo "Docker image tag will be: ${env.IMAGE_TAG}"
                 }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    sh "docker build -t $IMAGE_NAME:latest -t $IMAGE_NAME:$IMAGE_TAG ."
-                }
+                sh '''
+                    docker build -t $IMAGE_NAME:latest -t $IMAGE_NAME:$IMAGE_TAG .
+                '''
             }
         }
 
         stage('Push Docker Image') {
             steps {
-                script {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'docker-credentials',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )]) {
-                        sh '''
-                            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                        '''
-                        sh "docker push $IMAGE_NAME:latest"
-                        sh "docker push $IMAGE_NAME:$IMAGE_TAG"
-                    }
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-credentials',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        docker push $IMAGE_NAME:latest
+                        docker push $IMAGE_NAME:$IMAGE_TAG
+                    '''
                 }
             }
         }
