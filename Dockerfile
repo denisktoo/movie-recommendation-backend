@@ -5,7 +5,7 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /movie_recommendation
 
-RUN apt-get update && apt-get install -y gcc libpq-dev
+RUN apt-get update && apt-get install -y gcc libpq-dev netcat-openbsd
 
 COPY requirements.txt .
 
