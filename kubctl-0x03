@@ -1,0 +1,21 @@
+#!/bin/bash
+set -e
+
+echo "Applying updated blue deployment..."
+kubectl apply -f blue_deployment.yaml
+
+echo "Monitoring rollout status..."
+kubectl rollout status deployment/movie-app-blue
+
+echo "Checking current pods..."
+kubectl get pods
+
+echo "Testing service availability..."
+SERVICE_URL=$(minikube service movie-bluegreen-service --url)
+
+for i in {1..10}
+do
+  echo "Request $i"
+  curl -I "$SERVICE_URL" || true
+  sleep 2
+done

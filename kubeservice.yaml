@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: movie-bluegreen-service
+spec:
+  selector:
+    app: movie-app
+    version: blue
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP

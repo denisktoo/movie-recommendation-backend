@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+
+echo "Scaling deployment to 3 replicas..."
+kubectl scale deployment movie-app --replicas=3
+
+echo "Verifying running pods..."
+kubectl get pods
+
+echo "Showing resource usage..."
+kubectl top pods || echo "kubectl top failed. Enable metrics-server in Minikube."
+
+echo "Load testing instructions:"
+echo "If wrk is installed, run:"
+echo "wrk http://$(minikube service movie-service --url)"

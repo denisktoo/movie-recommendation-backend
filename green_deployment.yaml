@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: movie-app-green
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: movie-app
+      version: green
+  template:
+    metadata:
+      labels:
+        app: movie-app
+        version: green
+    spec:
+      containers:
+        - name: movie-app
+          image: kiprotich507/movie-recommendation-backend:2.0
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: movie-app-config
+            - secretRef:
+                name: movie-app-secret
