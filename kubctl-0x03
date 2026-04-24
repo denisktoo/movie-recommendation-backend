@@ -10,12 +10,19 @@ kubectl rollout status deployment/movie-app-blue
 echo "Checking current pods..."
 kubectl get pods
 
-echo "Testing service availability..."
-SERVICE_URL=$(minikube service movie-bluegreen-service --url)
+echo "Starting port-forward..."
+kubectl port-forward service/movie-bluegreen-service 8001:80 >/dev/null 2>&1 &
+PF_PID=$!
 
+sleep 3
+
+echo "Testing service availability..."
 for i in {1..10}
 do
   echo "Request $i"
-  curl -I "$SERVICE_URL" || true
+  curl -I http://127.0.0.1:8001/api/ || true
   sleep 2
 done
+
+echo "Stopping port-forward..."
+kill $PF_PID
