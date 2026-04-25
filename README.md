@@ -14,6 +14,7 @@ A RESTful Movie Recommendation API built with **Django REST Framework**, featuri
 * **Swagger API documentation**
 * **Dockerized setup with Postgres and Redis**
 * **CI/CD with GitHub Actions and Jenkins**
+* **Kubernetes deployment with Minikube (local orchestration)**
 
 ---
 
@@ -782,6 +783,235 @@ ENV PYTHONUNBUFFERED=1
 ```
 
 The legacy `ENV key value` (space-separated) format is deprecated and raises a `LegacyKeyValueFormat` warning in Docker build output. Using `=` is the correct format per current Docker best practice.
+
+---
+
+## ☸️ Kubernetes Deployment
+
+This project includes a full local Kubernetes deployment using **Minikube**, covering cluster setup, app deployment, scaling, ingress, blue-green deployment, and rolling updates. All Kubernetes manifests and shell scripts live at the project root alongside the `Dockerfile` and `Jenkinsfile` — not inside the Django app folders, which are reserved for application and project configuration code.
+
+The Kubernetes setup is the natural next layer after Docker Compose and CI/CD: Docker Compose handles local development, Jenkins and GitHub Actions handle build and delivery, and Kubernetes handles orchestration and deployment strategy.
+
+**Environment config in Kubernetes:** Docker Compose reads `.env` automatically. Kubernetes does not. Non-sensitive values (debug mode, database name, email host, Redis URLs) are injected via a `ConfigMap`. Sensitive values (Django secret key, database password, TMDB API key, email app password) are injected via a `Secret`. Neither file with real values is committed to GitHub.
+
+**Database in Kubernetes:** `DB_HOST=db` works in Docker Compose because Compose creates a service named `db`. In Kubernetes, a dedicated PostgreSQL `Deployment` and a `Service` named `db` must exist for the same hostname to resolve inside the cluster.
+
+**Startup ordering:** Kubernetes does not guarantee that dependent services are ready before the app pod starts. The Django container uses a startup loop that waits for `db:5432` to be reachable before running migrations and starting the server, so pods do not crash on first boot while Postgres is still initialising.
+
+---
+
+### 🗂️ Kubernetes File Reference
+
+Files are listed in workflow order — the order you apply and use them.
+
+| File | Kind | Purpose |
+| --- | --- | --- |
+| `kurbeScript` | Shell script | Starts Minikube, verifies cluster, lists pods |
+| `configmap.yaml` | ConfigMap | Non-sensitive environment variables |
+| `secret.example.yaml` | Secret template | Safe-to-commit template showing Secret structure |
+| `postgres-deployment.yaml` | Deployment | Runs PostgreSQL inside the cluster |
+| `postgres-service.yaml` | Service | Gives PostgreSQL the stable hostname `db` |
+| `deployment.yaml` | Deployment | Runs the Django app |
+| `service.yaml` | Service | Exposes Django internally via ClusterIP |
+| `kubctl-0x01` | Shell script | Scales to 3 replicas, checks pods and resource usage |
+| `ingress.yaml` | Ingress | Routes external HTTP traffic to the Django service |
+| `commands.txt` | Reference | Commands used to apply the Ingress configuration |
+| `blue_deployment.yaml` | Deployment | Blue (current stable) version for blue-green strategy |
+| `green_deployment.yaml` | Deployment | Green (new) version deployed alongside blue |
+| `kubeservice.yaml` | Service | Switches traffic between blue and green via selector |
+| `kubctl-0x02` | Shell script | Applies blue-green deployment and inspects green logs |
+| `kubctl-0x03` | Shell script | Applies rolling update, monitors rollout, tests availability |
+
+> `secret.yaml` (with real values) is added to `.gitignore` and never committed. Only `secret.example.yaml` is in the repository.
+
+---
+
+### 🚀 Running the Cluster
+
+Start Minikube and verify the cluster:
+
+```bash
+./kurbeScript
+```
+
+This checks that `minikube` and `kubectl` are installed, starts Minikube with the Docker driver, runs `kubectl cluster-info`, and lists all pods across namespaces.
+
+---
+
+### ⚙️ Environment Configuration
+
+Apply config before deploying any workload, because both the Django and PostgreSQL Deployments depend on these resources existing first:
+
+```bash
+kubectl apply -f configmap.yaml
+kubectl apply -f secret.yaml
+```
+
+`configmap.yaml` holds non-sensitive values — `DEBUG`, `DB_NAME`, `DB_HOST`, `DB_PORT`, email host settings, and Redis/Celery URLs. `secret.yaml` holds sensitive values — `SECRET_KEY`, `DB_PASSWORD`, `TMDB_API_KEY`, and `EMAIL_HOST_PASSWORD`.
+
+Both are loaded into the Django pod using `envFrom` in `deployment.yaml`:
+
+```yaml
+envFrom:
+  - configMapRef:
+      name: movie-app-config
+  - secretRef:
+      name: movie-app-secret
+```
+
+---
+
+### 🐘 PostgreSQL in Kubernetes
+
+Deploy the database and its Service before the Django app, so `db` is resolvable when Django starts:
+
+```bash
+kubectl apply -f postgres-deployment.yaml
+kubectl apply -f postgres-service.yaml
+```
+
+`postgres-service.yaml` creates a `ClusterIP` Service named `db`. This is the exact name `DB_HOST=db` resolves to inside the cluster. Without this Service, Django pods fail immediately with a DNS resolution error on startup.
+
+---
+
+### 🌐 Deploying the App
+
+```bash
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+kubectl get pods
+kubectl get services
+kubectl logs <pod-name>
+```
+
+`service.yaml` exposes the Django app internally using `ClusterIP`. This keeps the app unreachable from outside the cluster until an Ingress is configured, which matches real production patterns where backends are not directly exposed.
+
+---
+
+### 📈 Scaling
+
+```bash
+./kubctl-0x01
+```
+
+Scales the `movie-app` deployment to 3 replicas, then verifies running pods and resource usage via `kubectl top pods`. Because the Service is `ClusterIP`, load testing uses port-forwarding:
+
+```bash
+kubectl port-forward service/movie-service 8000:80
+# then in another terminal:
+wrk http://127.0.0.1:8000
+```
+
+Enable the metrics server if `kubectl top` is unavailable:
+
+```bash
+minikube addons enable metrics-server
+```
+
+---
+
+### 🌍 Ingress
+
+```bash
+minikube addons enable ingress
+kubectl apply -f ingress.yaml
+kubectl get ingress
+```
+
+`ingress.yaml` routes traffic from `movie.local` to `movie-service` on port 80. Add the Minikube IP to `/etc/hosts` to resolve the domain locally:
+
+```bash
+echo "$(minikube ip) movie.local" | sudo tee -a /etc/hosts
+```
+
+Then test:
+
+```bash
+curl http://movie.local/api/
+```
+
+---
+
+### 🟦🟩 Blue-Green Deployment
+
+```bash
+./kubctl-0x02
+```
+
+Applies `blue_deployment.yaml` (current stable version, image tag `latest`) and `green_deployment.yaml` (new version, image tag `2.0`) simultaneously. `kubeservice.yaml` controls which version receives traffic via its `version` label selector — starting with `version: blue`.
+
+To switch traffic to the green version, change the selector in `kubeservice.yaml`:
+
+```yaml
+selector:
+  app: movie-app
+  version: green   # was: blue
+```
+
+Then apply:
+
+```bash
+kubectl apply -f kubeservice.yaml
+```
+
+The script also waits for the green rollout to complete and reads logs from a running green pod to confirm the new version started correctly.
+
+> The `2.0` image must exist on Docker Hub before the green deployment can pull it. Build and push it first:
+> ```bash
+> docker build -t kiprotich507/movie-recommendation-backend:2.0 .
+> docker push kiprotich507/movie-recommendation-backend:2.0
+> ```
+
+---
+
+### 🔄 Rolling Updates
+
+```bash
+./kubctl-0x03
+```
+
+Applies the updated `blue_deployment.yaml`, monitors rollout with `kubectl rollout status`, then uses `kubectl port-forward` with a `curl` loop against `/api/` to verify the service remains available throughout the update. All 10 requests returning `HTTP 200 OK` confirms zero downtime during the rollout.
+
+The rolling update strategy in `blue_deployment.yaml` replaces old pods with new ones gradually. Kubernetes' default `RollingUpdate` strategy ensures at least one pod stays available while new pods are scheduled.
+
+---
+
+### 🔁 Full Apply Order
+
+```bash
+./kurbeScript
+
+kubectl apply -f configmap.yaml
+kubectl apply -f secret.yaml
+
+kubectl apply -f postgres-deployment.yaml
+kubectl apply -f postgres-service.yaml
+
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+
+minikube addons enable metrics-server
+./kubctl-0x01
+
+minikube addons enable ingress
+kubectl apply -f ingress.yaml
+
+./kubctl-0x02
+./kubctl-0x03
+```
+
+---
+
+### 🔐 Kubernetes Secrets vs Docker Compose `.env`
+
+| Context | How variables are provided |
+| --- | --- |
+| Local development (Docker Compose) | `.env` file, read automatically |
+| GitHub Actions CI | `env:` block + GitHub Secrets |
+| Jenkins | `environment {}` block + Jenkins credentials |
+| Kubernetes | `ConfigMap` + `Secret`, injected via `envFrom` |
+
+In all cases, sensitive values are never hardcoded in committed files. The pattern is consistent across the full stack.
 
 ---
 
