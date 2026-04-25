@@ -796,7 +796,17 @@ The Kubernetes setup is the natural next layer after Docker Compose and CI/CD: D
 
 **Database in Kubernetes:** `DB_HOST=db` works in Docker Compose because Compose creates a service named `db`. In Kubernetes, a dedicated PostgreSQL `Deployment` and a `Service` named `db` must exist for the same hostname to resolve inside the cluster.
 
-**Startup ordering:** Kubernetes does not guarantee that dependent services are ready before the app pod starts. The Django container uses a startup loop that waits for `db:5432` to be reachable before running migrations and starting the server, so pods do not crash on first boot while Postgres is still initialising.
+**Startup ordering:** Kubernetes does not guarantee that dependent services are ready before the app pod starts. The Django container handles this with a wait loop built directly into its startup command in `deployment.yaml` — it calls `nc -z db 5432` every 2 seconds until Postgres is reachable, then runs `python manage.py migrate` and starts the server. The pod stays running and waiting rather than crashing, so no manual intervention is needed on first boot.
+
+**`ALLOWED_HOSTS` in Kubernetes:** Django rejects requests from hosts not listed in `ALLOWED_HOSTS`. The project hardcodes the required hosts directly in `settings.py`:
+
+```python
+ALLOWED_HOSTS = ["127.0.0.1", "localhost", "0.0.0.0", "movie.local"]
+```
+
+This covers port-forward access (`127.0.0.1`), Ingress access (`movie.local`), and the container bind address (`0.0.0.0`). No `ALLOWED_HOSTS` configuration is needed in `configmap.yaml`.
+
+**Code changes and running pods:** Kubernetes runs containers from Docker images, not from local source files. Editing `settings.py` or any other file locally has no effect on running pods until the image is rebuilt, pushed to Docker Hub, and the deployments are restarted.
 
 ---
 
@@ -849,6 +859,8 @@ kubectl apply -f secret.yaml
 
 `configmap.yaml` holds non-sensitive values — `DEBUG`, `DB_NAME`, `DB_HOST`, `DB_PORT`, email host settings, and Redis/Celery URLs. `secret.yaml` holds sensitive values — `SECRET_KEY`, `DB_PASSWORD`, `TMDB_API_KEY`, and `EMAIL_HOST_PASSWORD`.
 
+
+
 Both are loaded into the Django pod using `envFrom` in `deployment.yaml`:
 
 ```yaml
@@ -885,6 +897,14 @@ kubectl logs <pod-name>
 ```
 
 `service.yaml` exposes the Django app internally using `ClusterIP`. This keeps the app unreachable from outside the cluster until an Ingress is configured, which matches real production patterns where backends are not directly exposed.
+
+If you ever need to force a pod to re-run the wait loop and pick up a config change (for example after updating a Secret), restart the deployment manually:
+
+```bash
+kubectl rollout restart deployment movie-app
+kubectl get pods -w
+kubectl logs -l app=movie-app
+```
 
 ---
 
@@ -930,6 +950,8 @@ Then test:
 curl http://movie.local/api/
 ```
 
+> **Note on URLs:** `0.0.0.0` is the address Django *binds to* inside the container — it means "listen on all interfaces." It is not a valid address to access from outside the container. Use `http://127.0.0.1:<port>` for port-forward access and `http://movie.local` for Ingress access.
+
 ---
 
 ### 🟦🟩 Blue-Green Deployment
@@ -962,6 +984,13 @@ The script also waits for the green rollout to complete and reads logs from a ru
 > docker push kiprotich507/movie-recommendation-backend:2.0
 > ```
 
+> **Keeping `2.0` in sync with your code:** `dep.yml` pushes `latest` automatically on every push to `main`. The `2.0` tag is a manual one-time push that simulates a new release for the blue-green exercise. If you have made code changes and want green to reflect them, rebuild and push `2.0` manually, then restart the green deployment:
+> ```bash
+> docker build -t kiprotich507/movie-recommendation-backend:2.0 .
+> docker push kiprotich507/movie-recommendation-backend:2.0
+> kubectl rollout restart deployment movie-app-green
+> ```
+
 ---
 
 ### 🔄 Rolling Updates
@@ -973,6 +1002,104 @@ The script also waits for the green rollout to complete and reads logs from a ru
 Applies the updated `blue_deployment.yaml`, monitors rollout with `kubectl rollout status`, then uses `kubectl port-forward` with a `curl` loop against `/api/` to verify the service remains available throughout the update. All 10 requests returning `HTTP 200 OK` confirms zero downtime during the rollout.
 
 The rolling update strategy in `blue_deployment.yaml` replaces old pods with new ones gradually. Kubernetes' default `RollingUpdate` strategy ensures at least one pod stays available while new pods are scheduled.
+
+---
+
+### 🐛 Debugging & Common Issues
+
+**Pod logs show `could not translate host name "db"`**
+The wait loop in `deployment.yaml` retries `nc -z db 5432` every 2 seconds until Postgres is reachable, so this should not occur on current pods. If you see it — for example after manually creating a pod outside the normal deployment — confirm the Postgres Service exists and force a restart:
+
+```bash
+kubectl get services
+kubectl rollout restart deployment movie-app
+kubectl get pods -w
+```
+
+**Deployment unchanged after editing a YAML file**
+If `kubectl apply` reports `unchanged` but you want to force a pod restart (for example after updating a Secret or ConfigMap):
+
+```bash
+kubectl rollout restart deployment movie-app
+```
+
+This works for any deployment — replace `movie-app` with `movie-app-blue`, `movie-app-green`, or `postgres` as needed.
+
+**Green pods stuck in `ImagePullBackOff`**
+The `2.0` image does not exist on Docker Hub yet. Build and push it manually first, then restart:
+
+```bash
+docker build -t kiprotich507/movie-recommendation-backend:2.0 .
+docker push kiprotich507/movie-recommendation-backend:2.0
+kubectl rollout restart deployment movie-app-green
+```
+
+**Green pods running stale code after changes**
+`dep.yml` only pushes `latest` automatically. The `2.0` tag must be updated manually whenever you want green to reflect current code:
+
+```bash
+docker build -t kiprotich507/movie-recommendation-backend:2.0 .
+docker push kiprotich507/movie-recommendation-backend:2.0
+kubectl rollout restart deployment movie-app-green
+```
+
+**`kubectl top pods` returns `Metrics API not available`**
+The metrics server is not yet ready. Enable it and wait for the pod to reach `Running`:
+
+```bash
+minikube addons enable metrics-server
+kubectl get pods -n kube-system -w
+```
+
+Once `metrics-server` shows `1/1 Running`, `kubectl top pods` will work.
+
+**Ingress addon fails with `context deadline exceeded`**
+The ingress-nginx pods did not become ready in time, usually due to a slow image pull. Disable and re-enable, optionally with more resources:
+
+```bash
+minikube addons disable ingress
+minikube stop
+minikube start --driver=docker --cpus=4 --memory=4096
+minikube addons enable ingress
+kubectl get pods -n ingress-nginx -w
+```
+
+**`curl` against `movie-bluegreen-service` returns malformed URL**
+The Service is `ClusterIP` so `minikube service --url` does not produce a valid URL. Use port-forwarding instead:
+
+```bash
+kubectl port-forward service/movie-bluegreen-service 8001:80
+# in another terminal:
+curl http://127.0.0.1:8001/api/
+```
+
+**Checking which image a running pod is using**
+
+```bash
+kubectl get pod <pod-name> -o jsonpath='{.spec.containers[0].image}'
+```
+
+**Useful one-liners**
+
+```bash
+# watch all pods live
+kubectl get pods -w
+
+# stream logs from all app pods
+kubectl logs -l app=movie-app -f
+
+# describe a pod for detailed events and errors
+kubectl describe pod <pod-name>
+
+# delete a stuck terminating pod
+kubectl delete pod <pod-name> --force --grace-period=0
+
+# check all services and their cluster IPs
+kubectl get services
+
+# check events across the namespace (good for pull errors, scheduling issues)
+kubectl get events --sort-by='.lastTimestamp'
+```
 
 ---
 
