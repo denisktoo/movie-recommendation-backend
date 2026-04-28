@@ -128,13 +128,14 @@ TMDB_API_KEY=your_tmdb_api_key_here
 ### Register User
 
 **POST** `/api/register/`
+
 Request example:
 
 ```json
 {
-  "username": "kip",
-  "email": "kip@example.com",
-  "password": "kip*#123"
+  "username": "john",
+  "email": "john@yourdomain.com",
+  "password": "John*#123"
 }
 ```
 
@@ -145,8 +146,8 @@ Response:
   "detail": "Your account has been created successfully.",
   "user": {
     "id": 1,
-    "username": "kip",
-    "email": "kip@example.com",
+    "username": "john",
+    "email": "john@yourdomain.com",
     "role": "user"
   }
 }
@@ -157,12 +158,13 @@ Response:
 ### Login (JWT)
 
 **POST** `/api/token/`
+
 Request example:
 
 ```json
 {
-  "username": "kip",
-  "password": "kip*#123"
+  "username": "john",
+  "password": "John*#123"
 }
 ```
 
@@ -175,9 +177,16 @@ Response:
 }
 ```
 
+Copy the `access` token — all protected endpoints require this header:
+
+```
+Authorization: Bearer <access_token>
+```
+
 ### Refresh Token
 
 **POST** `/api/token/refresh/`
+
 Request:
 
 ```json
@@ -186,19 +195,34 @@ Request:
 }
 ```
 
-All protected endpoints require the header:
+### Logout
 
+**POST** `/api/logout/`
+
+Blacklists the refresh token so it can no longer be used to obtain new access tokens.
+
+Request:
+
+```json
+{
+  "refresh": "<your_refresh_token>"
+}
 ```
-Authorization: Bearer <access_token>
+
+Response:
+
+```json
+{
+  "message": "Logout successful"
+}
 ```
 
 ---
 
 ## 🏠 API Root
 
-### API Root (`/api/`)
-
 **GET** `/api/`
+
 DRF API root — returns links to top-level resources:
 
 ```json
@@ -226,7 +250,25 @@ Update example:
 
 ```json
 {
-  "email": "newemail@example.com"
+  "email": "newemail@yourdomain.com"
+}
+```
+
+---
+
+## 👤 Profile Management
+
+* **Create Profile (Authenticated)** → `POST /api/profiles/`
+* **List My Profile (Authenticated)** → `GET /api/profiles/`
+
+> Notes: `user` is set automatically from `request.user`. Each user has one profile. Creating a profile twice will update the existing one.
+
+Create profile example:
+
+```json
+{
+  "bio": "Backend developer with a passion for Python and APIs.",
+  "location": "Nairobi, Kenya"
 }
 ```
 
@@ -240,13 +282,14 @@ Movies are fetched from TMDB and cached locally. The database acts as a local mi
 * **Retrieve Movie (Public)** → `GET /api/movies/{id}/`
 * **Filter Movies** → `GET /api/movies/?release_date=2026-03-15`
 
-> Notes: Each `GET /api/movies/` call fetches the latest trending movies from TMDB, updates the local cache, and returns a clean serialized response. Only admins can write to the movie resource directly.
+> Notes: Each `GET /api/movies/` call fetches the latest trending movies from TMDB, updates the local cache, and returns a clean serialized response. Only admins can write to the movie resource directly. You must call this endpoint before using favorites, watchlist, or ratings — those resources reference local movie IDs that only exist after TMDB results are cached.
 
 Response example:
 
 ```json
 [
   {
+    "id": 1,
     "tmdb_id": 687163,
     "title": "Project Hail Mary",
     "poster_path": "/yihdXomYb5kTeSivtFndMy5iDmf.jpg",
@@ -260,17 +303,17 @@ Response example:
 
 ## ❤️ Favorites
 
-* **List My Favorites (Authenticated)** → `GET /api/users/{user_id}/favorites/`
 * **Add Favorite (Authenticated)** → `POST /api/users/{user_id}/favorites/`
+* **List My Favorites (Authenticated)** → `GET /api/users/{user_id}/favorites/`
 * **Remove Favorite (Owner/Admin)** → `DELETE /api/users/{user_id}/favorites/{id}/`
 
-> Notes: `user` is always set from `request.user`. The `movie` field refers to the local Movie primary key — load movies first via `GET /api/movies/` to get valid IDs.
+> Notes: `user` is set automatically from `request.user`. Use the `id` from `GET /api/movies/` as the value for `movie_id`.
 
 Add favorite example:
 
 ```json
 {
-  "movie": 1
+  "movie_id": 1
 }
 ```
 
@@ -278,15 +321,15 @@ Add favorite example:
 
 ## 📺 Watchlist
 
-* **List My Watchlist (Authenticated)** → `GET /api/users/{user_id}/watchlist/`
 * **Add to Watchlist (Authenticated)** → `POST /api/users/{user_id}/watchlist/`
+* **List My Watchlist (Authenticated)** → `GET /api/users/{user_id}/watchlist/`
 * **Remove from Watchlist (Owner/Admin)** → `DELETE /api/users/{user_id}/watchlist/{id}/`
 
 Add to watchlist example:
 
 ```json
 {
-  "movie": 3
+  "movie_id": 1
 }
 ```
 
@@ -294,19 +337,19 @@ Add to watchlist example:
 
 ## ⭐ Ratings
 
-* **List My Ratings (Authenticated)** → `GET /api/users/{user_id}/ratings/`
 * **Rate a Movie (Authenticated)** → `POST /api/users/{user_id}/ratings/`
+* **List My Ratings (Authenticated)** → `GET /api/users/{user_id}/ratings/`
 * **Update Rating (Owner/Admin)** → `PATCH /api/users/{user_id}/ratings/{id}/`
 * **Delete Rating (Owner/Admin)** → `DELETE /api/users/{user_id}/ratings/{id}/`
 
-> Notes: Rating must be between 0 and 5. Each user can only rate a movie once — update the existing rating if you want to change it.
+> Notes: Rating must be between 0 and 5. Each user can only rate a movie once — use `PATCH` to update an existing rating. Movies rated 4 or above feed the ratings-based recommendation engine.
 
 Rate a movie example:
 
 ```json
 {
-  "movie": 1,
-  "rating": 4.5
+  "movie_id": 2,
+  "rating": 5
 }
 ```
 
@@ -314,7 +357,7 @@ Update rating example:
 
 ```json
 {
-  "rating": 5
+  "rating": 4.5
 }
 ```
 
@@ -324,8 +367,8 @@ Update rating example:
 
 Search history is a log of what the user has searched for. It feeds into the recommendation engine.
 
-* **List My Search History (Authenticated)** → `GET /api/searches/`
 * **Add Search Entry (Authenticated)** → `POST /api/searches/`
+* **List My Search History (Authenticated)** → `GET /api/searches/`
 * **Delete One Entry (Owner)** → `DELETE /api/searches/{id}/`
 * **Clear All History (Owner)** → `DELETE /api/searches/clear/`
 
@@ -351,27 +394,27 @@ Response:
 
 ## 🧠 Recommendations
 
-Two recommendation strategies are supported — both use the user's own behavior to personalize results.
+Two recommendation strategies are supported — both use the user's own behaviour to personalize results. Both endpoints are `GET` only and require no request body.
 
 ### From Search History
 
 **GET** `/api/generated-recommendations/from-search-history/`
 
-*What it does:*
 Reads the user's recent search queries, extracts keywords, searches TMDB using those terms, saves results locally, excludes movies already rated/favorited/watchlisted, caches the result, and returns a ranked movie list.
 
-> Best when the user has active search history. Returns up to 10 movies.
+> Best when the user has active search history. Requires at least one logged search entry. Returns up to 10 movies.
 
 Response example:
 
 ```json
 [
   {
-    "tmdb_id": 687163,
-    "title": "Project Hail Mary",
-    "poster_path": "/yihdXomYb5kTeSivtFndMy5iDmf.jpg",
-    "release_date": "2026-03-15",
-    "cached_at": "2026-04-14T08:00:00Z"
+    "id": 21,
+    "tmdb_id": 62,
+    "title": "2001: A Space Odyssey",
+    "poster_path": "/ve72VxNqjGM69Uky4WTo2bK6rfq.jpg",
+    "release_date": "1968-04-02",
+    "cached_at": "2026-04-28T15:05:22.673793Z"
   }
 ]
 ```
@@ -389,10 +432,9 @@ If no search history exists:
 
 **GET** `/api/generated-recommendations/from-ratings/`
 
-*What it does:*
 Reads movies the user rated 4 or above, fetches TMDB recommendations based on each liked movie, merges and ranks results by frequency of appearance, excludes already interacted movies, caches the result, and returns a ranked movie list.
 
-> Best when the user has rated several movies. More stable and accurate than search-based recommendations.
+> Best when the user has rated several movies. Requires at least one movie rated 4 or above. More stable and accurate than search-based recommendations.
 
 If no qualifying ratings exist:
 
@@ -509,25 +551,24 @@ Example paginated response:
 docker compose up --build -d
 ```
 
-2. Register a user → `POST /api/register/`  *(welcome email sent automatically via Celery)*
+2. Register a user → `POST /api/register/` *(welcome email sent automatically via Celery)*
 3. Login → `POST /api/token/` → copy your `access` token
-4. Load trending movies → `GET /api/movies/`
-5. Add favorites, rate movies, log searches
-6. Hit recommendation endpoints to get personalized results
-7. Check `GET /api/recommendations/` to see cached recommendation data
-8. 🧪 Check Celery logs for background task execution:
-
-* Stream logs (live)
+4. Load trending movies → `GET /api/movies/` — **do this first**, it populates local movie IDs
+5. Add favorites → `POST /api/users/{user_id}/favorites/` with `{ "movie_id": 1 }`
+6. Add to watchlist → `POST /api/users/{user_id}/watchlist/` with `{ "movie_id": 2 }`
+7. Rate movies → `POST /api/users/{user_id}/ratings/` with `{ "movie_id": 2, "rating": 5 }`
+8. Log searches → `POST /api/searches/` with `{ "query": "space adventure" }`
+9. Get recommendations:
+   * `GET /api/generated-recommendations/from-search-history/`
+   * `GET /api/generated-recommendations/from-ratings/`
+10. Check cached results → `GET /api/recommendations/`
+11. 🧪 Check Celery logs for background task execution:
 
 ```bash
 docker compose logs -f celery
 ```
 
-* View logs (static)
-
-```bash
-docker compose logs celery
-```
+> **Dependency chain:** Favorites, watchlist, and ratings all reference local movie `id` values that only exist after `GET /api/movies/` has been called at least once. Recommendations only return results when sufficient data exists — at least one logged search for search-history recommendations, and at least one movie rated 4 or above for ratings-based recommendations.
 
 ---
 
@@ -562,9 +603,9 @@ TMDB_API_KEY=your_tmdb_api_key
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_USE_TLS=True
-EMAIL_HOST_USER=your_email@gmail.com
+EMAIL_HOST_USER=your_email@yourdomain.com
 EMAIL_HOST_PASSWORD=your_app_password
-DEFAULT_FROM_EMAIL=your_email@gmail.com
+DEFAULT_FROM_EMAIL=your_email@yourdomain.com
 
 CELERY_BROKER_URL=redis://redis:6379/0
 CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -615,8 +656,8 @@ Triggered on every push to `main`. Builds and pushes the Docker image to Docker 
 
 What it does:
 * Logs into Docker Hub using `DOCKERHUB_USERNAME` and `DOCKERHUB_PASSWORD` secrets
-* Builds the image and tags it with both `latest` and the short Git commit SHA
-* Pushes both tags to Docker Hub: `kiprotich507/movie-recommendation-backend`
+* Builds the image and tags it as `latest`
+* Pushes the tag to Docker Hub: `kiprotich507/movie-recommendation-backend`
 
 ---
 
@@ -858,8 +899,6 @@ kubectl apply -f secret.yaml
 ```
 
 `configmap.yaml` holds non-sensitive values — `DEBUG`, `DB_NAME`, `DB_HOST`, `DB_PORT`, email host settings, and Redis/Celery URLs. `secret.yaml` holds sensitive values — `SECRET_KEY`, `DB_PASSWORD`, `TMDB_API_KEY`, and `EMAIL_HOST_PASSWORD`.
-
-
 
 Both are loaded into the Django pod using `envFrom` in `deployment.yaml`:
 
