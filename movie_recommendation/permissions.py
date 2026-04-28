@@ -27,10 +27,18 @@ class IsAuthenticatedOwnerOrAdmin(BasePermission):
     message = "You do not have permission to access this item."
 
     def has_permission(self, request, view):
-        return bool(
-            request.user and
-            request.user.is_authenticated
-        )
+        if not (request.user and request.user.is_authenticated):
+            return False
+
+        if getattr(request.user, "role", None) == "admin":
+            return True
+
+        user_pk = view.kwargs.get("user_pk")
+
+        if user_pk is not None:
+            return str(request.user.id) == str(user_pk)
+
+        return True
 
     def has_object_permission(self, request, view, obj):
         if not (request.user and request.user.is_authenticated):

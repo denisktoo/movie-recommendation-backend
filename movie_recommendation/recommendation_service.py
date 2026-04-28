@@ -14,7 +14,7 @@ def upsert_movie_from_tmdb(movie_data):
             'poster_path': movie_data.get('poster_path'),
             'release_date': (
                 parse_date(movie_data.get('release_date')) if movie_data
-                .get('release_date') else None,
+                .get('release_date') else None
             )
         }
     )

@@ -38,30 +38,48 @@ class FavoriteSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     movie = MovieSerializer(read_only=True)
 
+    movie_id = serializers.PrimaryKeyRelatedField(
+        queryset=Movie.objects.all(),
+        source='movie',
+        write_only=True
+    )
+
     class Meta:
         model = Favorite
-        fields = ['id', 'user', 'movie', 'added_at']
-        read_only_fields = ['id', 'added_at']
+        fields = ['id', 'user', 'movie', 'movie_id', 'added_at']
+        read_only_fields = ['id', 'user', 'movie', 'added_at']
 
 
 class WatchlistSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     movie = MovieSerializer(read_only=True)
 
+    movie_id = serializers.PrimaryKeyRelatedField(
+        queryset=Movie.objects.all(),
+        source='movie',
+        write_only=True
+    )
+
     class Meta:
         model = Watchlist
-        fields = ['id', 'user', 'movie', 'added_at']
-        read_only_fields = ['id', 'added_at']
+        fields = ['id', 'user', 'movie', 'movie_id', 'added_at']
+        read_only_fields = ['id', 'user', 'movie', 'added_at']
 
 
 class RatingSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     movie = MovieSerializer(read_only=True)
 
+    movie_id = serializers.PrimaryKeyRelatedField(
+        queryset=Movie.objects.all(),
+        source='movie',
+        write_only=True
+    )
+
     class Meta:
         model = Rating
-        fields = ['id', 'user', 'movie', 'rating', 'rated_at']
-        read_only_fields = ['id', 'rated_at']
+        fields = ['id', 'user', 'movie', 'movie_id', 'rating', 'rated_at']
+        read_only_fields = ['id', 'user', 'movie', 'rated_at']
 
 
 class SearchHistorySerializer(serializers.ModelSerializer):
@@ -70,7 +88,7 @@ class SearchHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = SearchHistory
         fields = ['id', 'user', 'query', 'searched_at']
-        read_only_fields = ['id', 'searched_at']
+        read_only_fields = ['id', 'user', 'searched_at']
 
 
 class RecommendationCacheSerializer(serializers.ModelSerializer):
