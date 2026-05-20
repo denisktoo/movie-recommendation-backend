@@ -791,6 +791,48 @@ The Jenkinsfile sets `USE_SQLITE_FOR_TESTS = 'true'` in its environment block. T
 
 ## 🔍 Code Quality
 
+### Black (Code Formatter)
+
+Black is configured via `pyproject.toml`:
+
+```toml
+[tool.black]
+line-length = 88
+exclude = '''
+/(
+    env
+  | venv
+  | \.venv
+  | migrations
+)/
+'''
+```
+
+Run locally:
+
+```bash
+black .
+```
+
+### isort (Import Sorter)
+
+isort is configured via `pyproject.toml` with the Black-compatible profile:
+
+```toml
+[tool.isort]
+profile = "black"
+line_length = 88
+skip = ["env", "venv", ".venv", "migrations"]
+```
+
+Run locally:
+
+```bash
+isort .
+```
+
+### Flake8 (Linter)
+
 Flake8 is configured via `.flake8` at the project root:
 
 ```ini
@@ -813,6 +855,8 @@ Run locally:
 ```bash
 flake8 .
 ```
+
+---
 
 ### ✅ Dockerfile ENV Format
 
@@ -1199,3 +1243,28 @@ Pull the image:
 ```bash
 docker pull kiprotich507/movie-recommendation-backend:latest
 ```
+
+---
+
+## 🧪 Tests
+
+Tests are written using Django REST Framework's `APITestCase` and cover the core API flows.
+
+Run tests locally:
+
+```bash
+docker compose exec web python manage.py test movie_recommendation
+```
+
+### What's covered
+
+| Area | Tests |
+| --- | --- |
+| Auth | Register, login, wrong password |
+| Movies | Public fetch |
+| Favorites | Add, list, unauthenticated blocked |
+| Watchlist | Add, list |
+| Ratings | Rate a movie, list ratings |
+| Search | Search, view history, unauthenticated blocked |
+
+---
