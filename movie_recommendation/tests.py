@@ -4,18 +4,23 @@ from rest_framework.test import APITestCase
 
 from .models import Favorite, Movie, Rating, SearchHistory, User, Watchlist
 
-
 # Helpers
+
 
 def make_user(username, email, password="testpass123"):
     return User.objects.create_user(username=username, email=email, password=password)
 
+
 def get_token(client, username, password="testpass123"):
-    res = client.post(reverse("token_obtain_pair"), {"username": username, "password": password})
+    res = client.post(
+        reverse("token_obtain_pair"), {"username": username, "password": password}
+    )
     return res.data["access"]
+
 
 def auth(client, token):
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
 
 def make_movie(tmdb_id=1, title="Inception"):
     return Movie.objects.create(tmdb_id=tmdb_id, title=title)
@@ -23,28 +28,41 @@ def make_movie(tmdb_id=1, title="Inception"):
 
 # Auth
 
+
 class AuthTests(APITestCase):
 
     def test_register(self):
-        res = self.client.post(reverse("register"), {
-            "username": "denis", "email": "denis@test.com",
-            "password": "pass1234", "first_name": "Denis", "last_name": "K",
-        })
+        res = self.client.post(
+            reverse("register"),
+            {
+                "username": "denis",
+                "email": "denis@test.com",
+                "password": "pass1234",
+                "first_name": "Denis",
+                "last_name": "K",
+            },
+        )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
 
     def test_login_returns_tokens(self):
         make_user("denis", "denis@test.com")
-        res = self.client.post(reverse("token_obtain_pair"), {"username": "denis", "password": "testpass123"})
+        res = self.client.post(
+            reverse("token_obtain_pair"),
+            {"username": "denis", "password": "testpass123"},
+        )
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertIn("access", res.data)
 
     def test_wrong_password_rejected(self):
         make_user("denis", "denis@test.com")
-        res = self.client.post(reverse("token_obtain_pair"), {"username": "denis", "password": "wrong"})
+        res = self.client.post(
+            reverse("token_obtain_pair"), {"username": "denis", "password": "wrong"}
+        )
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 # Movies
+
 
 class MovieTests(APITestCase):
 
@@ -55,6 +73,7 @@ class MovieTests(APITestCase):
 
 # Favorites
 
+
 class FavoriteTests(APITestCase):
 
     def setUp(self):
@@ -64,7 +83,9 @@ class FavoriteTests(APITestCase):
 
     def test_user_can_add_favorite(self):
         auth(self.client, self.token)
-        res = self.client.post(f"/api/users/{self.user.id}/favorites/", {"movie_id": self.movie.id})
+        res = self.client.post(
+            f"/api/users/{self.user.id}/favorites/", {"movie_id": self.movie.id}
+        )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
 
     def test_user_can_list_favorites(self):
@@ -74,11 +95,14 @@ class FavoriteTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
     def test_unauthenticated_cannot_add_favorite(self):
-        res = self.client.post(f"/api/users/{self.user.id}/favorites/", {"movie_id": self.movie.id})
+        res = self.client.post(
+            f"/api/users/{self.user.id}/favorites/", {"movie_id": self.movie.id}
+        )
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 # Watchlist
+
 
 class WatchlistTests(APITestCase):
 
@@ -89,7 +113,9 @@ class WatchlistTests(APITestCase):
 
     def test_user_can_add_to_watchlist(self):
         auth(self.client, self.token)
-        res = self.client.post(f"/api/users/{self.user.id}/watchlist/", {"movie_id": self.movie.id})
+        res = self.client.post(
+            f"/api/users/{self.user.id}/watchlist/", {"movie_id": self.movie.id}
+        )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
 
     def test_user_can_list_watchlist(self):
@@ -101,6 +127,7 @@ class WatchlistTests(APITestCase):
 
 # Ratings
 
+
 class RatingTests(APITestCase):
 
     def setUp(self):
@@ -110,7 +137,10 @@ class RatingTests(APITestCase):
 
     def test_user_can_rate_movie(self):
         auth(self.client, self.token)
-        res = self.client.post(f"/api/users/{self.user.id}/ratings/", {"movie_id": self.movie.id, "rating": 4.5})
+        res = self.client.post(
+            f"/api/users/{self.user.id}/ratings/",
+            {"movie_id": self.movie.id, "rating": 4.5},
+        )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
 
     def test_user_can_list_ratings(self):
@@ -121,6 +151,7 @@ class RatingTests(APITestCase):
 
 
 # Search History
+
 
 class SearchTests(APITestCase):
 
