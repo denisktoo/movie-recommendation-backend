@@ -1,6 +1,13 @@
 from django.contrib import admin
+
 from .models import (
-    User, Movie, Favorite, Watchlist, Rating, SearchHistory, RecommendationCache
+    Favorite,
+    Movie,
+    Rating,
+    RecommendationCache,
+    SearchHistory,
+    User,
+    Watchlist,
 )
 
 admin.site.register(User)

@@ -1,6 +1,6 @@
-from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
+from django.db import models
 
 
 class User(AbstractUser):
@@ -8,19 +8,19 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
 
     ROLE_CHOICES = (
-        ('user', 'User'),
-        ('admin', 'Admin'),
+        ("user", "User"),
+        ("admin", "Admin"),
     )
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default="user")
 
-    USERNAME_FIELD = 'username'
-    REQUIRED_FIELDS = ['email']
+    USERNAME_FIELD = "username"
+    REQUIRED_FIELDS = ["email"]
 
     def save(self, *args, **kwargs):
         if self.pk:
             old = User.objects.get(pk=self.pk)
             if old.role != self.role:
-                if not kwargs.pop('allow_role_change', False):
+                if not kwargs.pop("allow_role_change", False):
                     raise ValidationError(
                         "You are not allowed to change the account role this way."
                     )
@@ -39,21 +39,21 @@ class Movie(models.Model):
 
 
 class Favorite(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorites')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="favorites")
     movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'movie')
+        unique_together = ("user", "movie")
 
 
 class Watchlist(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='watchlist')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="watchlist")
     movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'movie')
+        unique_together = ("user", "movie")
 
 
 class Rating(models.Model):
@@ -63,28 +63,28 @@ class Rating(models.Model):
     rated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('user', 'movie')
+        unique_together = ("user", "movie")
 
 
 class SearchHistory(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='searches')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="searches")
     query = models.CharField(max_length=255)
     searched_at = models.DateTimeField(auto_now_add=True)
 
 
 class RecommendationCache(models.Model):
     CACHE_TYPE_CHOICES = (
-        ('search_history', 'Search History'),
-        ('ratings', 'Ratings'),
-        ('hybrid', 'Hybrid'),
+        ("search_history", "Search History"),
+        ("ratings", "Ratings"),
+        ("hybrid", "Hybrid"),
     )
 
     user = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name='recommendation_caches'
+        User, on_delete=models.CASCADE, related_name="recommendation_caches"
     )
     cache_type = models.CharField(max_length=20, choices=CACHE_TYPE_CHOICES)
     data = models.JSONField()
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('user', 'cache_type')
+        unique_together = ("user", "cache_type")

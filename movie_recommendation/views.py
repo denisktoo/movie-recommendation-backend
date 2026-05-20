@@ -1,27 +1,37 @@
-from django.db import IntegrityError, transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError, transaction
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import generics, mixins, permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
-from rest_framework import viewsets, permissions, mixins, status, generics
+
+from .filter import MovieFilter
 from .models import (
-    User, Favorite, Watchlist, Rating, SearchHistory,
-    RecommendationCache
-)
-from .serializer import (
-    RegisterSerializer, UserSerializer, MovieSerializer, FavoriteSerializer,
-    WatchlistSerializer, RatingSerializer, SearchHistorySerializer,
-    RecommendationCacheSerializer
+    Favorite,
+    Rating,
+    RecommendationCache,
+    SearchHistory,
+    User,
+    Watchlist,
 )
 from .permissions import IsAdminOrReadOnly, IsAuthenticatedOwnerOrAdmin
-from .tmdb import fetch_and_cache_trending_movies
-from django_filters.rest_framework import DjangoFilterBackend
-from .filter import MovieFilter
-from rest_framework.decorators import action
 from .recommendation_service import (
-    recommend_from_search_history,
     recommend_from_ratings,
+    recommend_from_search_history,
+)
+from .serializer import (
+    FavoriteSerializer,
+    MovieSerializer,
+    RatingSerializer,
+    RecommendationCacheSerializer,
+    RegisterSerializer,
+    SearchHistorySerializer,
+    UserSerializer,
+    WatchlistSerializer,
 )
 from .tasks import registration_confirmation_email
+from .tmdb import fetch_and_cache_trending_movies
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -67,6 +77,7 @@ class OwnedResourceViewSet(viewsets.ModelViewSet):
     - model_class
     - serializer_class
     """
+
     permission_classes = [IsAuthenticatedOwnerOrAdmin]
     model_class = None
 
@@ -91,9 +102,9 @@ class OwnedResourceViewSet(viewsets.ModelViewSet):
             serializer.save(user=self.request.user)
 
         except IntegrityError:
-            raise ValidationError({
-                "detail": "This item already exists in your account."
-            })
+            raise ValidationError(
+                {"detail": "This item already exists in your account."}
+            )
 
         except DjangoValidationError as exc:
             raise ValidationError({"detail": str(exc)})
@@ -118,19 +129,21 @@ class RatingViewSet(OwnedResourceViewSet):
             rating_value = serializer.validated_data.get("rating")
 
             if rating_value is not None and not (0 <= rating_value <= 5):
-                raise ValidationError({
-                    "rating": "Please provide a rating between 0 and 5."
-                })
+                raise ValidationError(
+                    {"rating": "Please provide a rating between 0 and 5."}
+                )
 
             serializer.save(user=self.request.user)
 
         except IntegrityError:
-            raise ValidationError({
-                "detail": (
-                    "You have already rated this movie."
-                    "Please update your existing rating instead."
-                )
-            })
+            raise ValidationError(
+                {
+                    "detail": (
+                        "You have already rated this movie."
+                        "Please update your existing rating instead."
+                    )
+                }
+            )
 
         except DjangoValidationError as exc:
             raise ValidationError({"detail": str(exc)})
@@ -139,9 +152,9 @@ class RatingViewSet(OwnedResourceViewSet):
         rating_value = serializer.validated_data.get("rating")
 
         if rating_value is not None and not (0 <= rating_value <= 5):
-            raise ValidationError({
-                "rating": "Please provide a rating between 0 and 5."
-            })
+            raise ValidationError(
+                {"rating": "Please provide a rating between 0 and 5."}
+            )
 
         serializer.save()
 
@@ -150,23 +163,21 @@ class SearchHistoryViewSet(
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
     mixins.DestroyModelMixin,
-    viewsets.GenericViewSet
+    viewsets.GenericViewSet,
 ):
     serializer_class = SearchHistorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return SearchHistory.objects.filter(
-            user=self.request.user
-        ).order_by("-searched_at")
+        return SearchHistory.objects.filter(user=self.request.user).order_by(
+            "-searched_at"
+        )
 
     def perform_create(self, serializer):
         query = serializer.validated_data.get("query", "").strip()
 
         if not query:
-            raise ValidationError({
-                "query": "Please enter a search term."
-            })
+            raise ValidationError({"query": "Please enter a search term."})
 
         serializer.save(user=self.request.user)
 
@@ -177,12 +188,12 @@ class SearchHistoryViewSet(
         if deleted_count == 0:
             return Response(
                 {"detail": "Your search history is already empty."},
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
 
         return Response(
             {"detail": "Your search history has been cleared."},
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
 
@@ -191,9 +202,9 @@ class RecommendationCacheViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return RecommendationCache.objects.filter(
-            user=self.request.user
-        ).order_by("-updated_at")
+        return RecommendationCache.objects.filter(user=self.request.user).order_by(
+            "-updated_at"
+        )
 
 
 class RecommendationViewSet(viewsets.ViewSet):
@@ -211,9 +222,9 @@ class RecommendationViewSet(viewsets.ViewSet):
                         "No recommendations were found from your recent searches yet."
                         "Try searching for a few movies or genres first."
                     ),
-                    "results": []
+                    "results": [],
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
 
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -230,9 +241,9 @@ class RecommendationViewSet(viewsets.ViewSet):
                         "No recommendations were found from your ratings yet. Rate a"
                         "few movies first to get personalized suggestions."
                     ),
-                    "results": []
+                    "results": [],
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
 
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -245,9 +256,7 @@ class RegisterView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         user = serializer.save()
-        transaction.on_commit(
-            lambda: registration_confirmation_email.delay(user.id)
-        )
+        transaction.on_commit(lambda: registration_confirmation_email.delay(user.id))
         return user
 
     def create(self, request, *args, **kwargs):
@@ -258,7 +267,7 @@ class RegisterView(generics.CreateAPIView):
         return Response(
             {
                 "detail": "Your account has been created successfully.",
-                "user": RegisterSerializer(user).data
+                "user": RegisterSerializer(user).data,
             },
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_201_CREATED,
         )

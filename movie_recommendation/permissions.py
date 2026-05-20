@@ -1,4 +1,4 @@
-from rest_framework.permissions import BasePermission, SAFE_METHODS
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
 class IsAdminOrReadOnly(BasePermission):
@@ -6,6 +6,7 @@ class IsAdminOrReadOnly(BasePermission):
     Anyone can read.
     Only admins can create, update, or delete.
     """
+
     message = "You can view this, but only an admin can change it."
 
     def has_permission(self, request, view):
@@ -13,7 +14,8 @@ class IsAdminOrReadOnly(BasePermission):
             return True
 
         return bool(
-            request.user and request.user.is_authenticated
+            request.user
+            and request.user.is_authenticated
             and getattr(request.user, "role", None) == "admin"
         )
 
@@ -24,6 +26,7 @@ class IsAuthenticatedOwnerOrAdmin(BasePermission):
     Admins can access any object.
     Owners can access their own object.
     """
+
     message = "You do not have permission to access this item."
 
     def has_permission(self, request, view):
