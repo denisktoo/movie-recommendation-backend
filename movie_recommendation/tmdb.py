@@ -1,7 +1,8 @@
 import requests
 from django.conf import settings
-from django.utils.dateparse import parse_date
 from django.core.cache import cache
+from django.utils.dateparse import parse_date
+
 from .models import Movie
 
 BASE_URL = "https://api.themoviedb.org/3"
