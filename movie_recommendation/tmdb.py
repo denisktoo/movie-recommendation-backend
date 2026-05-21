@@ -1,10 +1,12 @@
 import requests
 from django.conf import settings
 from django.utils.dateparse import parse_date
-
+from django.core.cache import cache
 from .models import Movie
 
 BASE_URL = "https://api.themoviedb.org/3"
+TRENDING_CACHE_KEY = "trending_movies"
+TRENDING_CACHE_TIMEOUT = 600  # 10 minutes
 
 
 def get_trending_movies():
@@ -16,6 +18,12 @@ def get_trending_movies():
 
 
 def fetch_and_cache_trending_movies():
+    # Check if trending movies are already cached
+    cached_movies = cache.get(TRENDING_CACHE_KEY)
+    if cached_movies is not None:
+        return cached_movies
+
+    # Cache miss - fetch from TMDB and update the database
     movies = get_trending_movies()
 
     for movie in movies:
@@ -32,7 +40,12 @@ def fetch_and_cache_trending_movies():
             },
         )
 
-    return Movie.objects.all().order_by("-cached_at")
+    cached_movies = Movie.objects.all().order_by("-cached_at")
+
+    # Store in Redis for 10 minutes
+    cache.set(TRENDING_CACHE_KEY, cached_movies, TRENDING_CACHE_TIMEOUT)
+
+    return cached_movies
 
 
 def search_movies(query):
