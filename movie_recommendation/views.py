@@ -89,9 +89,17 @@ class OwnedResourceViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if getattr(user, "role", None) == "admin":
-            return self.model_class.objects.all().order_by("-id")
+            return (
+                self.model_class.objects.select_related("user", "movie")
+                .all()
+                .order_by("-id")
+            )
 
-        return self.model_class.objects.filter(user=user).order_by("-id")
+        return (
+            self.model_class.objects.select_related("user", "movie")
+            .filter(user=user)
+            .order_by("-id")
+        )
 
     def perform_create(self, serializer):
         """
