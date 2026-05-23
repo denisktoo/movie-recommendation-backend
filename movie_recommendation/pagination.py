@@ -1,5 +1,6 @@
 from rest_framework import pagination
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 
 
 class BasePagination(pagination.PageNumberPagination):
@@ -18,3 +19,13 @@ class BasePagination(pagination.PageNumberPagination):
                 "results": data,
             }
         )
+
+
+class RecommendationsThrottle(UserRateThrottle):
+    """
+    Custom throttle for recommendation endpoints.
+    These hit the TMDB API and run heavy DB queries.
+    Limited to 20 requests per hour per user.
+    """
+
+    scope = "recommendations"

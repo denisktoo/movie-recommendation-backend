@@ -15,6 +15,7 @@ from .models import (
     User,
     Watchlist,
 )
+from .pagination import RecommendationsThrottle
 from .permissions import IsAdminOrReadOnly, IsAuthenticatedOwnerOrAdmin
 from .recommendation_service import (
     recommend_from_ratings,
@@ -217,6 +218,7 @@ class RecommendationCacheViewSet(viewsets.ReadOnlyModelViewSet):
 
 class RecommendationViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [RecommendationsThrottle]
 
     @action(detail=False, methods=["get"], url_path="from-search-history")
     def from_search_history(self, request):
