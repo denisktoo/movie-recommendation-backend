@@ -37,6 +37,12 @@ class Movie(models.Model):
     def __str__(self):
         return self.title
 
+    class Meta:
+        ordering = ["-cached_at"]
+        indexes = [
+            models.Index(fields=["-cached_at"]),
+        ]
+
 
 class Favorite(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="favorites")
@@ -45,6 +51,7 @@ class Favorite(models.Model):
 
     class Meta:
         unique_together = ("user", "movie")
+        ordering = ["-added_at"]
 
 
 class Watchlist(models.Model):
@@ -54,6 +61,7 @@ class Watchlist(models.Model):
 
     class Meta:
         unique_together = ("user", "movie")
+        ordering = ["-added_at"]
 
 
 class Rating(models.Model):
@@ -64,12 +72,22 @@ class Rating(models.Model):
 
     class Meta:
         unique_together = ("user", "movie")
+        ordering = ["-rated_at"]
+        indexes = [
+            models.Index(fields=["user", "rating"]),  # for rating__gte=4 filter
+        ]
 
 
 class SearchHistory(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="searches")
     query = models.CharField(max_length=255)
     searched_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-searched_at"]
+        indexes = [
+            models.Index(fields=["user", "-searched_at"]),  # for recent search lookup
+        ]
 
 
 class RecommendationCache(models.Model):
@@ -78,7 +96,6 @@ class RecommendationCache(models.Model):
         ("ratings", "Ratings"),
         ("hybrid", "Hybrid"),
     )
-
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="recommendation_caches"
     )
@@ -88,3 +105,7 @@ class RecommendationCache(models.Model):
 
     class Meta:
         unique_together = ("user", "cache_type")
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["user", "cache_type"]),  # for update_or_create lookup
+        ]
