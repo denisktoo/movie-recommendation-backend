@@ -22,7 +22,12 @@ def fetch_and_cache_trending_movies():
     # Check if trending movies are already cached
     cached_movies = cache.get(TRENDING_CACHE_KEY)
     if cached_movies is not None:
-        return cached_movies
+        # Reconstruct a queryset from cached IDs.
+        # DjangoFilterBackend requires a queryset with a .model attribute.
+        # A plain list does not have it and causes a 500 error.
+        return Movie.objects.filter(id__in=[m.id for m in cached_movies]).order_by(
+            "-cached_at"
+        )
 
     # Cache miss - fetch from TMDB and update the database
     movies = get_trending_movies()
@@ -41,12 +46,13 @@ def fetch_and_cache_trending_movies():
             },
         )
 
-    cached_movies = Movie.objects.all().order_by("-cached_at")
+    queryset = Movie.objects.all().order_by("-cached_at")
 
-    # Store in Redis for 10 minutes
-    cache.set(TRENDING_CACHE_KEY, cached_movies, TRENDING_CACHE_TIMEOUT)
+    # list() forces queryset evaluation before storing in Redis.
+    # Raw querysets are not serializable — list() gives Redis actual objects.
+    cache.set(TRENDING_CACHE_KEY, list(queryset), TRENDING_CACHE_TIMEOUT)
 
-    return cached_movies
+    return queryset
 
 
 def search_movies(query):
